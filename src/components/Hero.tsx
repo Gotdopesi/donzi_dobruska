@@ -38,8 +38,8 @@ export function Hero({ onReserve }: HeroProps) {
           </h1>
 
           <p className="mt-8 text-lg md:text-xl text-muted-foreground max-w-xl leading-relaxed animate-fade-in">
-            Precizní střihy, horké ručníky a chvíle skutečné relaxace
-            doprovázené šálkem výborné kávy. Řemeslo, kterému věříte.
+            Precizní střihy, horké ručníky a chvíle skutečné relaxace.
+            Řemeslo, kterému věříte.
           </p>
 
           <div className="mt-10 flex flex-wrap gap-4 animate-fade-in">
@@ -59,7 +59,7 @@ export function Hero({ onReserve }: HeroProps) {
 
           <div className="mt-16 flex flex-wrap gap-10 text-sm">
             {[
-              { k: "10+", v: "Let zkušeností" },
+              { k: "300+", v: "Stálých zákazníků" },
               { k: "4.9★", v: "Hodnocení" },
               { k: "1500+", v: "Spokojených zákazníků" },
             ].map((s) => (

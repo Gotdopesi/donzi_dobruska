@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, startOfDay } from "date-fns";
 import { cs } from "date-fns/locale";
-import { CalendarIcon, Check, Loader2, Sparkles } from "lucide-react";
+import { CalendarIcon, Check, Loader2, Scissors } from "lucide-react";
 import { z } from "zod";
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
@@ -26,6 +24,12 @@ import {
 import { DEFAULT_BARBERSHOP_ID } from "@/lib/barbershop";
 import { REZERVACE_TABLE } from "@/lib/rezervace";
 import { FALLBACK_BOOKING_SERVICES } from "@/lib/reservation-data";
+import {
+  BOOKING_CATEGORY_ORDER,
+  getCategoryLabel,
+  getServiceCategoryByName,
+  type BookingServiceCategory,
+} from "@/lib/service-categories";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 import { withTimeout } from "@/lib/promise-timeout";
 import { toast } from "sonner";
@@ -34,9 +38,18 @@ const SUBMIT_MS = 25_000;
 const FETCH_SLOTS_MS = 15_000;
 const MAX_BOOKING_DAYS = 90;
 
-type ServiceOption = { id: number; name: string; price: number; duration_minutes: number };
+type ServiceOption = {
+  id: number;
+  name: string;
+  price: number;
+  duration_minutes: number;
+  category: BookingServiceCategory;
+};
 
-const FALLBACK_SERVICES: ServiceOption[] = FALLBACK_BOOKING_SERVICES;
+const FALLBACK_SERVICES: ServiceOption[] = FALLBACK_BOOKING_SERVICES.map((s) => ({
+  ...s,
+  category: getServiceCategoryByName(s.name),
+}));
 
 function formatServicePrice(price: number) {
   return `${price.toLocaleString("cs-CZ")} Kč`;
@@ -85,13 +98,29 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
   const [bookedIntervals, setBookedIntervals] = useState<BookedInterval[]>([]);
   const [loadingTimes, setLoadingTimes] = useState(false);
   const [servicesList, setServicesList] = useState<ServiceOption[]>([]);
+  const [serviceTab, setServiceTab] = useState<BookingServiceCategory>("package");
 
   const maxBookingDate = addDays(startOfDay(new Date()), MAX_BOOKING_DAYS);
+
+  const servicesByCategory = useMemo(() => {
+    const map: Record<BookingServiceCategory, ServiceOption[]> = {
+      package: [],
+      hair: [],
+      beard: [],
+      extras: [],
+    };
+    for (const s of servicesList) {
+      map[s.category].push(s);
+    }
+    return map;
+  }, [servicesList]);
+
+  const tabServices = servicesByCategory[serviceTab];
 
   useEffect(() => {
     if (!open || !isSupabaseConfigured()) {
       setServicesList(
-        FALLBACK_SERVICES.map((s, i) => ({ ...s, id: -(i + 1), duration_minutes: 60 })),
+        FALLBACK_SERVICES.map((s, i) => ({ ...s, id: -(i + 1) })),
       );
       return;
     }
@@ -114,6 +143,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
             name: s.name,
             price: Number(s.price),
             duration_minutes: Number(s.duration_minutes),
+            category: getServiceCategoryByName(s.name),
           })),
         );
       });
@@ -124,7 +154,10 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
     const match = servicesList.find(
       (s) => s.name.toLowerCase() === preselectServiceName.toLowerCase(),
     );
-    if (match) setService(String(match.id));
+    if (match) {
+      setService(String(match.id));
+      setServiceTab(match.category);
+    }
   }, [open, preselectServiceName, servicesList]);
 
   const reset = () => {
@@ -133,6 +166,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
     setLoading(false); setConfirmed(false);
     setBookedIntervals([]);
     setLoadingTimes(false);
+    setServiceTab("package");
   };
 
   const submit = async () => {
@@ -282,7 +316,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
       {trigger ? (
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       ) : null}
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="sm:max-w-2xl md:max-w-3xl max-h-[min(92vh,900px)] overflow-y-auto border-gold/25 bg-card p-6 md:p-8">
         {confirmed ? (
           <div className="text-center py-6">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full gradient-gold">
@@ -304,33 +338,79 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
           </div>
         ) : (
           <>
-            <DialogHeader>
-              <DialogTitle className="font-display text-2xl flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-gold" /> Rezervace termínu
+            <DialogHeader className="space-y-2 pb-2 border-b border-border/60">
+              <DialogTitle className="font-display text-3xl flex items-center gap-2">
+                <Scissors className="h-6 w-6 text-gold" /> Rezervace termínu
               </DialogTitle>
-              <DialogDescription>Krok {step} ze 3</DialogDescription>
+              <DialogDescription className="text-xs uppercase tracking-[0.25em]">
+                Krok {step} ze 3 · Barbershop Donzi
+              </DialogDescription>
             </DialogHeader>
 
             {step === 1 && (
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label>Vyberte službu</Label>
-                  <Select value={service} onValueChange={setService}>
-                    <SelectTrigger><SelectValue placeholder="Zvolte službu..." /></SelectTrigger>
-                    <SelectContent>
-                      {servicesList.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>
-                          {s.name} —{" "}
-                          <span className="text-muted-foreground">
-                            {formatServicePrice(s.price)} · {s.duration_minutes} min
-                          </span>
-                        </SelectItem>
+              <div className="space-y-5 py-2">
+                <div className="space-y-3">
+                  <Label className="text-xs uppercase tracking-widest text-gold">
+                    Vyberte službu
+                  </Label>
+                  <Tabs
+                    value={serviceTab}
+                    onValueChange={(v) => setServiceTab(v as BookingServiceCategory)}
+                  >
+                    <TabsList className="flex flex-wrap h-auto gap-1 bg-secondary/50 p-1 w-full">
+                      {BOOKING_CATEGORY_ORDER.map((cat) => (
+                        <TabsTrigger
+                          key={cat}
+                          value={cat}
+                          className="text-[10px] uppercase tracking-wider data-[state=active]:bg-gold data-[state=active]:text-gold-foreground"
+                        >
+                          {getCategoryLabel(cat)}
+                        </TabsTrigger>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </TabsList>
+                  </Tabs>
+                  <div className="max-h-[min(42vh,360px)] overflow-y-auto rounded-md border border-border/80 divide-y divide-border/60">
+                    {tabServices.length === 0 ? (
+                      <p className="p-4 text-sm text-muted-foreground text-center">
+                        V této kategorii zatím není služba.
+                      </p>
+                    ) : (
+                      tabServices.map((s) => {
+                        const selected = String(s.id) === service;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setService(String(s.id))}
+                            className={cn(
+                              "w-full text-left px-4 py-3 transition-colors hover:bg-gold/5",
+                              selected && "bg-gold/10 border-l-2 border-l-gold",
+                            )}
+                          >
+                            <div className="flex justify-between gap-3 items-start">
+                              <span className="font-medium text-sm leading-snug pr-2">
+                                {s.name}
+                              </span>
+                              <span className="text-gold text-sm whitespace-nowrap shrink-0">
+                                {formatServicePrice(s.price)}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-1 uppercase tracking-wider">
+                              {s.duration_minutes} min
+                            </p>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
                 <DialogFooter>
-                  <Button type="button" disabled={!service} onClick={() => setStep(2)}>
+                  <Button
+                    type="button"
+                    className="gold-gradient text-gold-foreground font-semibold uppercase tracking-wider text-xs px-8"
+                    disabled={!service}
+                    onClick={() => setStep(2)}
+                  >
                     Pokračovat
                   </Button>
                 </DialogFooter>
@@ -396,7 +476,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
                             className={cn(
                               "px-3 py-2 rounded-md border text-sm transition-all",
                               time === t
-                                ? "bg-primary text-primary-foreground border-primary"
+                                ? "bg-gold text-gold-foreground border-gold"
                                 : "border-border hover:border-gold hover:text-gold",
                             )}
                           >
@@ -453,7 +533,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
                   <Button type="button" variant="ghost" onClick={() => setStep(2)}>
                     Zpět
                   </Button>
-                  <Button type="button" onClick={() => void submit()} disabled={loading}>
+                  <Button type="button" onClick={() => void submit()} disabled={loading} className="gold-gradient text-gold-foreground font-semibold">
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Potvrdit rezervaci
                   </Button>

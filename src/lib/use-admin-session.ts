@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRouter } from "@/lib/router";
 import { withTimeout } from "@/lib/promise-timeout";
+import {
+  adminAccessErrorMessage,
+  checkAdminBarbershopAccess,
+} from "@/lib/admin-auth";
 import { toast } from "sonner";
 
 const AUTH_BOOT_MS = 18_000;
@@ -20,6 +24,13 @@ export function useAdminSession() {
         const { data } = await withTimeout(supabase.auth.getSession(), AUTH_BOOT_MS, "Supabase");
         if (cancelled) return;
         if (!data.session) {
+          navigate("/admin/login", { replace: true });
+          return;
+        }
+        const check = await checkAdminBarbershopAccess(data.session.user.id);
+        if (!check.ok) {
+          await supabase.auth.signOut();
+          toast.error(adminAccessErrorMessage(check), { duration: 14_000 });
           navigate("/admin/login", { replace: true });
           return;
         }
@@ -45,8 +56,16 @@ export function useAdminSession() {
         void navigate("/admin/login", { replace: true });
         return;
       }
-      setUserEmail(session.user.email ?? null);
-      setAuthed(true);
+      void checkAdminBarbershopAccess(session.user.id).then(async (check) => {
+        if (!check.ok) {
+          await supabase.auth.signOut();
+          toast.error(adminAccessErrorMessage(check), { duration: 14_000 });
+          return;
+        }
+        setUserEmail(session.user.email ?? null);
+        setAuthed(true);
+      });
+      return;
     });
 
     return () => {

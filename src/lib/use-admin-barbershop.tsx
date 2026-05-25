@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_BARBERSHOP_ID } from "@/lib/barbershop";
+import { checkAdminBarbershopAccess } from "@/lib/admin-auth";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 
 type Ctx = {
@@ -24,14 +25,9 @@ export function AdminBarbershopProvider({ children }: { children: ReactNode }) {
     let resolvedId = DEFAULT_BARBERSHOP_ID;
 
     if (uid) {
-      const { data: link } = await supabase
-        .from(SHOWCASE_TABLES.barbershopAdmins)
-        .select("barbershop_id")
-        .eq("user_id", uid)
-        .maybeSingle();
-
-      if (link?.barbershop_id != null) {
-        resolvedId = Number(link.barbershop_id);
+      const check = await checkAdminBarbershopAccess(uid);
+      if (check.ok) {
+        resolvedId = check.barbershopId;
       }
     }
 

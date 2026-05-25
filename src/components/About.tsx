@@ -26,9 +26,9 @@ export function About() {
               />
             </div>
             <div className="absolute -bottom-6 -left-6 glass-gold px-6 py-5 rounded-sm hidden md:block">
-              <div className="font-display text-4xl text-gold leading-none">10+</div>
+              <div className="font-display text-4xl text-gold leading-none">300+</div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground mt-1">
-                Let řemesla
+                Stálých zákazníků
               </div>
             </div>
           </div>
@@ -58,7 +58,7 @@ export function About() {
               {[
                 "Precizní řemeslo",
                 "Prémiové produkty",
-                "Káva na uvítanou",
+                "Individuální přístup",
                 "Diskrétní atmosféra",
               ].map((f) => (
                 <div key={f} className="flex items-center gap-3">

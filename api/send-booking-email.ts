@@ -162,7 +162,7 @@ async function loadReservation(
         service: String(raw.service),
         booking_date: String(raw.booking_date),
         booking_time: String(raw.booking_time),
-        barbershopName: shop?.name ?? "Studio Elegance",
+        barbershopName: shop?.name ?? "Barbershop Donzi",
         barbershopEmail: shop?.email ?? null,
       },
     };
@@ -201,7 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const customerName = [row.first_name, row.last_name].filter(Boolean).join(" ").trim();
     const cancelUrl = buildCancelReservationUrl(row.id, row.booking_date, row.booking_time);
     const resend = new Resend(requireEnv("RESEND_API_KEY"));
-    const from = optionalEnv("RESEND_FROM", "Studio Elegance <onboarding@resend.dev>");
+    const from = optionalEnv("RESEND_FROM", "Barbershop Donzi <onboarding@resend.dev>");
 
     const { data: sent, error: sendErr } = await resend.emails.send({
       from,

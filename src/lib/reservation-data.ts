@@ -13,9 +13,6 @@ export type Service = {
   bookable?: boolean;
 };
 
-/** @deprecated use category */
-export type ServiceCategoryLegacy = ServiceCategory;
-
 export const CATEGORY_LABELS: Record<ServiceCategory, string> = {
   package: "Balíčky",
   hair: "Střih & vlasy",

@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useRouter } from "@/lib/router";
+import {
+  adminAccessErrorMessage,
+  checkAdminBarbershopAccess,
+} from "@/lib/admin-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +27,12 @@ export default function AdminLoginPage() {
       try {
         const { data } = await withTimeout(supabase.auth.getSession(), AUTH_BOOT_MS, "Supabase");
         if (!cancelled && data.session) {
-          navigate("/admin", { replace: true });
+          const check = await checkAdminBarbershopAccess(data.session.user.id);
+          if (check.ok) {
+            navigate("/admin", { replace: true });
+          } else {
+            await supabase.auth.signOut();
+          }
         }
       } catch (e) {
         console.error(e);
@@ -49,13 +58,24 @@ export default function AdminLoginPage() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
     setLoading(false);
     if (error) {
       toast.error("Přihlášení se nezdařilo. Zkontrolujte údaje.");
+      return;
+    }
+    const userId = authData.user?.id;
+    if (!userId) {
+      toast.error("Přihlášení se nezdařilo.");
+      return;
+    }
+    const check = await checkAdminBarbershopAccess(userId);
+    if (!check.ok) {
+      await supabase.auth.signOut();
+      toast.error(adminAccessErrorMessage(check), { duration: 14_000 });
       return;
     }
     toast.success("Přihlášení proběhlo úspěšně.");

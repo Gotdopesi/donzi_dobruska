@@ -33,11 +33,21 @@ type ServiceStatsRow = {
   amount_total: number;
 };
 
+type CatalogService = {
+  id: number;
+  name: string;
+  price: number;
+  duration_minutes: number;
+  is_active: boolean;
+};
+
 export default function AdminServicesPage() {
   const { ready, authed, signOut } = useAdminSession();
   const { barbershopId, shopName, loading: shopLoading } = useAdminBarbershop();
   const [rows, setRows] = useState<ServiceStatsRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogService[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
 
   const monthKey = format(startOfMonth(new Date()), "yyyy-MM");
   const monthLabel = format(startOfMonth(new Date()), "LLLL yyyy", { locale: cs });
@@ -74,9 +84,36 @@ export default function AdminServicesPage() {
     );
   }, [barbershopId, monthKey]);
 
+  const loadCatalog = useCallback(async () => {
+    setLoadingCatalog(true);
+    const { data, error } = await supabase
+      .from(SHOWCASE_TABLES.services)
+      .select("id, name, price, duration_minutes, is_active")
+      .eq("barbershop_id", barbershopId)
+      .order("name");
+
+    setLoadingCatalog(false);
+    if (error) {
+      toast.error("Nepodařilo se načíst ceník služeb.", { description: error.message });
+      return;
+    }
+    setCatalog(
+      (data ?? []).map((s) => ({
+        id: s.id,
+        name: s.name,
+        price: Number(s.price),
+        duration_minutes: Number(s.duration_minutes),
+        is_active: Boolean(s.is_active),
+      })),
+    );
+  }, [barbershopId]);
+
   useEffect(() => {
-    if (ready && authed && !shopLoading) void load();
-  }, [ready, authed, shopLoading, load]);
+    if (ready && authed && !shopLoading) {
+      void load();
+      void loadCatalog();
+    }
+  }, [ready, authed, shopLoading, load, loadCatalog]);
 
   const topOrdered = useMemo(() => {
     if (rows.length === 0) return null;
@@ -112,7 +149,7 @@ export default function AdminServicesPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          <Button variant="outline" className="border-border" onClick={() => void load()} disabled={loading}>
+          <Button variant="outline" className="border-border" onClick={() => { void load(); void loadCatalog(); }} disabled={loading || loadingCatalog}>
             <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
             Obnovit
           </Button>
@@ -126,6 +163,49 @@ export default function AdminServicesPage() {
       <AdminNav />
 
       <p className="text-sm text-muted-foreground mb-6 capitalize">Přehled za {monthLabel}</p>
+
+      <div className="rounded-xl border border-border bg-card/50 shadow-sm overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-border/60">
+          <h2 className="font-display text-xl">Ceník služeb v databázi</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Služby pro online rezervaci (barbershop ID {barbershopId})
+          </p>
+        </div>
+        {loadingCatalog && catalog.length === 0 ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gold" />
+          </div>
+        ) : catalog.length === 0 ? (
+          <p className="text-muted-foreground text-sm p-8 text-center">
+            Žádné služby — spusťte v Supabase skript{" "}
+            <code className="text-xs">supabase/donzi_dobruska_setup.sql</code> a propojte admin účet (
+            <code className="text-xs">supabase/donzi_admin_access.sql</code>).
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Služba</TableHead>
+                <TableHead className="text-right">Cena</TableHead>
+                <TableHead className="text-right">Délka</TableHead>
+                <TableHead className="text-right">Stav</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {catalog.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell className="text-right">{s.price.toLocaleString("cs-CZ")} Kč</TableCell>
+                  <TableCell className="text-right">{s.duration_minutes} min</TableCell>
+                  <TableCell className="text-right text-xs uppercase tracking-wider">
+                    {s.is_active ? "aktivní" : "neaktivní"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2 mb-8">
         <Card className="border-gold/25">

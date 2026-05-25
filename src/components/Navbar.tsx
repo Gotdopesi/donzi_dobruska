@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Menu, X, Scissors } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import logo from "@/assets/logo.webp";
 
 interface NavbarProps {
   onReserve: () => void;
@@ -34,9 +35,15 @@ export function Navbar({ onReserve }: NavbarProps) {
       }`}
     >
       <div className="container mx-auto px-6 flex items-center justify-between">
-        <a href="#uvod" className="flex items-center gap-2 group">
-          <Scissors className="w-5 h-5 text-gold group-hover:rotate-12 transition-transform" />
-          <span className="font-display text-2xl tracking-[0.3em] text-foreground">
+        <a href="#uvod" className="flex items-center gap-3 group">
+          <img
+            src={logo}
+            alt="Barbershop Donzi"
+            className="h-10 w-10 rounded-full object-cover border border-gold/40 group-hover:border-gold transition-colors"
+            width={40}
+            height={40}
+          />
+          <span className="font-display text-2xl tracking-[0.3em] text-foreground hidden sm:inline">
             DON<span className="text-gold">Z</span>I
           </span>
         </a>

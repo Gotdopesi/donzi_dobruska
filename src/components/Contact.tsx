@@ -1,8 +1,8 @@
 import { MapPin, Phone, Clock } from "lucide-react";
 
 const hours = [
-  { d: "Pondělí – Pátek", h: "10:00 – 19:00" },
-  { d: "Sobota", h: "10:00 – 21:00" },
+  { d: "Pondělí – Čtvrtek", h: "10:00 – 19:00" },
+  { d: "Pátek – Sobota", h: "10:00 – 21:00" },
   { d: "Neděle", h: "Zavřeno" },
 ];
 

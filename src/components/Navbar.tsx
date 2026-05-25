@@ -12,6 +12,7 @@ const links = [
   { href: "#tym", label: "Tým" },
   { href: "#sluzby", label: "Ceník" },
   { href: "#galerie", label: "Galerie" },
+  { href: "#poukaz", label: "Poukaz" },
   { href: "#kontakt", label: "Kontakt" },
 ];
 

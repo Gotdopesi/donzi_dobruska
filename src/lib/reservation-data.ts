@@ -22,46 +22,31 @@ export const CATEGORY_LABELS: Record<ServiceCategory, string> = {
 
 export const SERVICES: Service[] = [
   {
-    id: "komplet",
-    name: "Komplet (Střih + Vousy + Napaření ručníkem)",
-    description: "Kompletní úprava střihu, vousů a horkého ručníku.",
-    price: 700,
+    id: "gentleman",
+    name: "Gentleman (střih, vousy, úprava obočí + styling)",
+    description: "Kompletní pánská úprava — střih, vousy, obočí a finální styling.",
+    price: 600,
     duration: 60,
     category: "package",
-  },
-  {
-    id: "donzi-komplet",
-    name: "DONZI KOMPLET (Prémiová péče + Černá maska + Masáž hlavy)",
-    description: "Prémiová péče včetně černé masky a masáže hlavy.",
-    price: 900,
-    duration: 75,
-    category: "package",
-    featured: false,
+    featured: true,
   },
   {
     id: "vip",
-    name: "VIP PÉČE (Kompletní péče, maska, masáž, úprava chloupků + káva)",
-    description: "Nejvyšší úroveň péče s maskou, masáží, detaily a kávou.",
-    price: 1300,
-    duration: 90,
+    name: "VIP péče",
+    description:
+      "Dopřejte si skutečně prémiový zážitek, který jde daleko za běžné stříhání. VIP péče zahrnuje kompletní střih, úpravu vousů, relaxační horký ručník nebo páru, precizní úpravu obočí, chloupků kolem uší a v nose, hloubkově čistící obličejovou masku a příjemnou masáž hlavy a krku. Na závěr profesionální styling a šálek kvalitní kávy k tomu. Perfektní volba pro muže, kteří si chtějí dopřát čas jen pro sebe.",
+    price: 1000,
+    duration: 80,
     category: "package",
     vip: true,
     featured: true,
   },
   {
-    id: "klasicky",
-    name: "Klasický střih",
-    description: "Precizní klasický střih dle vašeho přání.",
+    id: "klasicky-pansky",
+    name: "Klasický pánský střih",
+    description: "Precizní pánský střih dle vašeho přání.",
     price: 400,
-    duration: 35,
-    category: "hair",
-  },
-  {
-    id: "moderni",
-    name: "Moderní pánský střih (Fade, Taper, atd.)",
-    description: "Moderní střih včetně fade, taper a detailních kontur.",
-    price: 450,
-    duration: 45,
+    duration: 30,
     category: "hair",
   },
   {
@@ -121,10 +106,10 @@ export const SERVICES: Service[] = [
     category: "hair",
   },
   {
-    id: "vousy-britva",
-    name: "Úprava vousů (Břitva, napaření ručníkem)",
-    description: "Úprava vousů břitvou s horkým ručníkem.",
-    price: 350,
+    id: "modelace-vousu",
+    name: "Modelace vousů + olejová péče",
+    description: "Tvarování vousů s prémiovými oleji.",
+    price: 300,
     duration: 30,
     category: "beard",
   },
@@ -174,14 +159,4 @@ export const FALLBACK_BOOKING_SERVICES = SERVICES.filter((s) => s.bookable !== f
 
 export function getServiceNameById(id: string): string | undefined {
   return SERVICES.find((s) => s.id === id)?.name;
-}
-
-/** @deprecated Services.tsx uses category field */
-export function getAvailableSlots(_date: Date): string[] {
-  return [];
-}
-
-/** @deprecated */
-export function isDayAvailable(_date: Date): boolean {
-  return true;
 }

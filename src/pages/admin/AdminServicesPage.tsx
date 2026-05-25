@@ -256,9 +256,16 @@ export default function AdminServicesPage() {
             <Loader2 className="h-10 w-10 animate-spin text-gold" />
           </div>
         ) : rows.length === 0 ? (
-          <p className="text-muted-foreground text-sm p-8 text-center">
-            Zatím žádné statistiky služeb pro tento měsíc.
-          </p>
+          <div className="p-8 text-center space-y-3">
+            <p className="text-muted-foreground text-sm">
+              Statistiky tržeb (vyděláno / v plánu) se zobrazí po prvních rezervacích.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Pokud už rezervace máte, spusťte v Supabase{" "}
+              <code className="text-[10px]">donzi_rls_admin_fix.sql</code> a přepočet:{" "}
+              <code className="text-[10px]">SELECT showcase_refresh_vydelky(...)</code>
+            </p>
+          </div>
         ) : (
           <Table>
             <TableHeader>

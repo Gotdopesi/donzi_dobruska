@@ -30,6 +30,7 @@ import {
   getServiceCategoryByName,
   type BookingServiceCategory,
 } from "@/lib/service-categories";
+import type { ServiceCategory } from "@/lib/reservation-data";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 import { withTimeout } from "@/lib/promise-timeout";
 import { toast } from "sonner";
@@ -43,7 +44,7 @@ type ServiceOption = {
   name: string;
   price: number;
   duration_minutes: number;
-  category: BookingServiceCategory;
+  category: ServiceCategory;
 };
 
 const FALLBACK_SERVICES: ServiceOption[] = FALLBACK_BOOKING_SERVICES.map((s) => ({
@@ -110,7 +111,8 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
       extras: [],
     };
     for (const s of servicesList) {
-      map[s.category].push(s);
+      const cat = s.category;
+      map[cat].push(s);
     }
     return map;
   }, [servicesList]);
@@ -156,7 +158,8 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
     );
     if (match) {
       setService(String(match.id));
-      setServiceTab(match.category);
+      const tab: BookingServiceCategory = match.category;
+      setServiceTab(tab);
     }
   }, [open, preselectServiceName, servicesList]);
 

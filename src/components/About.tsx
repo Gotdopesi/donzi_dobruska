@@ -14,7 +14,7 @@ export function About() {
                 loading="lazy"
                 width={1280}
                 height={896}
-                className="w-40 h-40 md:w-48 md:h-48 rounded-full object-cover border-4 border-border shadow-luxe"
+                className="w-52 h-52 md:w-64 md:h-64 rounded-full object-cover border-4 border-border shadow-luxe"
               />
               <img
                 src={tools}
@@ -22,7 +22,7 @@ export function About() {
                 loading="lazy"
                 width={1280}
                 height={896}
-                className="w-40 h-40 md:w-48 md:h-48 rounded-full object-cover border-4 border-gold/40 shadow-gold mt-8 md:mt-16"
+                className="w-52 h-52 md:w-64 md:h-64 rounded-full object-cover border-4 border-gold/40 shadow-gold mt-10 md:mt-20"
               />
             </div>
             <div className="absolute -bottom-6 -left-6 glass-gold px-6 py-5 rounded-sm hidden md:block">

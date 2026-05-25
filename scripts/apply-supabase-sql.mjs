@@ -36,18 +36,23 @@ function loadEnvFile(name) {
 
 loadEnvFile(".env");
 loadEnvFile(".env.local");
+// Sdílený přístup k DB pro celou složku kadernictvi (agent + oba salony)
+loadEnvFile("../.env.local");
 
 const files = [
   "supabase/showcase_schema.sql",
-  "supabase/showcase_v2_schema.sql",
-  "supabase/full_setup_check.sql",
+  "supabase/migrations/20260524130000_showcase_v2.sql",
+  "supabase/multi_tenant_rls.sql",
+  "supabase/donzi_rls_admin_fix.sql",
+  "supabase/donzi_services_v2.sql",
 ];
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   console.error(
-    "Chybí DATABASE_URL v .env.local.\n" +
-      "Supabase Dashboard → Project Settings → Database → Connection string (URI, pooler port 6543).\n" +
+    "Chybí DATABASE_URL.\n" +
+      "Vytvoř soubor: kadernictvi/.env.local (viz .env.local.example)\n" +
+      "Supabase Dashboard → Project Settings → Database → Connection string (URI).\n" +
       "Příklad:\n" +
       "DATABASE_URL=postgresql://postgres.hnkcjrvqbeojegujuuyw:HESLO@aws-0-eu-central-1.pooler.supabase.com:6543/postgres",
   );

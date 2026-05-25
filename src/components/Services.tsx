@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Crown, Scissors, Sparkles, Gift, Check } from "lucide-react";
+import { Crown, Scissors, Sparkles, Gift } from "lucide-react";
 import {
   SERVICES,
   CATEGORY_LABELS,
@@ -11,7 +11,7 @@ interface ServicesProps {
   onReserve: (preselectId?: string) => void;
 }
 
-const TABS: { key: ServiceCategory; label: string; icon: typeof Crown }[] = [
+const TABS: { key: ServiceCategory; label: string; icon: typeof Scissors }[] = [
   { key: "package", label: "Balíčky", icon: Crown },
   { key: "hair", label: "Střih & vlasy", icon: Scissors },
   { key: "beard", label: "Vousy", icon: Sparkles },
@@ -39,19 +39,18 @@ export function Services({ onReserve }: ServicesProps) {
             Vyberte si <span className="gold-text-gradient">svůj zážitek</span>
           </h2>
           <p className="mt-5 text-muted-foreground">
-            Od rychlé úpravy po kompletní VIP péči. Klikněte na službu
-            a my ji přidáme do rezervace.
+            Klikněte na službu a rovnou ji přidáme do rezervace.
           </p>
         </div>
 
-        {/* Top packages — highlighted */}
-        <div className="grid md:grid-cols-3 gap-6 mb-16">
-          {packages.map((p) => (
-            <PackageCard key={p.id} svc={p} onReserve={() => onReserve(p.id)} />
-          ))}
-        </div>
+        {tab === "package" && (
+          <div className="grid md:grid-cols-2 gap-6 mb-16 max-w-5xl mx-auto">
+            {packages.map((p) => (
+              <PackageCard key={p.id} svc={p} onReserve={() => onReserve(p.id)} />
+            ))}
+          </div>
+        )}
 
-        {/* Category tabs */}
         <div className="flex flex-wrap justify-center gap-2 mb-10">
           {TABS.map((t) => {
             const Icon = t.icon;
@@ -73,22 +72,20 @@ export function Services({ onReserve }: ServicesProps) {
           })}
         </div>
 
-        <div className="text-center mb-8">
-          <h3 className="font-display text-2xl text-foreground">
-            {CATEGORY_LABELS[tab]}
-          </h3>
-        </div>
-
-        {/* List */}
-        <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-4 animate-fade-in">
-          {items.map((s) => (
-            <ServiceRow key={s.id} svc={s} onReserve={() => onReserve(s.id)} />
-          ))}
-        </div>
-
-        <p className="text-center text-xs uppercase tracking-widest text-muted-foreground mt-10">
-          Ceny jsou orientační · konečnou cenu potvrdí váš barber
-        </p>
+        {tab !== "package" && (
+          <>
+            <div className="text-center mb-8">
+              <h3 className="font-display text-2xl text-foreground">
+                {CATEGORY_LABELS[tab]}
+              </h3>
+            </div>
+            <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-4 animate-fade-in">
+              {items.map((s) => (
+                <ServiceRow key={s.id} svc={s} onReserve={() => onReserve(s.id)} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -101,7 +98,7 @@ function PackageCard({
   svc: Service;
   onReserve: () => void;
 }) {
-  const isVip = svc.featured;
+  const isVip = svc.vip;
   return (
     <div
       className={`relative rounded-sm overflow-hidden p-8 md:p-10 transition-all hover:-translate-y-1 duration-300 ${
@@ -113,48 +110,26 @@ function PackageCard({
       {isVip && (
         <div className="absolute top-0 right-0">
           <div className="gold-gradient text-gold-foreground text-[10px] uppercase tracking-widest font-bold px-4 py-1.5 rounded-bl-sm">
-            ★ Doporučujeme
+            VIP péče 🌟
           </div>
         </div>
       )}
 
       <div className="flex items-center gap-2 text-gold mb-4">
         <Crown className="w-5 h-5" />
-        <span className="text-xs uppercase tracking-[0.3em] font-semibold">
-          {isVip ? "Vlajková služba" : "Balíček"}
-        </span>
+        <span className="text-xs uppercase tracking-[0.3em] font-semibold">Balíček</span>
       </div>
 
-      <h3 className="font-display text-4xl text-foreground mb-3">{svc.name}</h3>
-      <p className="text-muted-foreground mb-6 leading-relaxed">
-        {svc.description}
-      </p>
-
-      <ul className="space-y-2 mb-8">
-        {svc.description
-          .replace(".", "")
-          .split(/[,+]/)
-          .map((part) => part.trim())
-          .filter(Boolean)
-          .slice(0, 6)
-          .map((p) => (
-            <li
-              key={p}
-              className="flex items-start gap-2 text-sm text-foreground/90"
-            >
-              <Check className="w-4 h-4 text-gold mt-0.5 shrink-0" />
-              <span className="capitalize">{p}</span>
-            </li>
-          ))}
-      </ul>
+      <h3 className="font-display text-3xl md:text-4xl text-foreground mb-3">{svc.name}</h3>
+      <p className="text-muted-foreground mb-6 leading-relaxed text-sm">{svc.description}</p>
 
       <div className="flex items-end justify-between gap-4 flex-wrap pt-4 border-t border-border/50">
         <div>
           <div className="font-display text-4xl text-gold leading-none">
-            {svc.price} Kč
+            {svc.price.toLocaleString("cs-CZ")} Kč
           </div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-2">
-            cca {svc.duration} min
+            {svc.duration} min
           </div>
         </div>
         <button
@@ -165,7 +140,7 @@ function PackageCard({
               : "border border-gold text-gold hover:bg-gold hover:text-gold-foreground"
           }`}
         >
-          Rezervovat
+          Vybrat
         </button>
       </div>
     </div>
@@ -179,43 +154,29 @@ function ServiceRow({
   svc: Service;
   onReserve: () => void;
 }) {
-  const bookable = svc.bookable !== false;
   return (
     <button
-      onClick={bookable ? onReserve : undefined}
-      disabled={!bookable}
-      className={`group text-left p-5 rounded-sm bg-secondary/40 border border-border transition-all ${
-        bookable
-          ? "hover:border-gold hover:bg-gold/5 hover:-translate-y-0.5 cursor-pointer"
-          : "opacity-90 cursor-default"
-      }`}
+      onClick={onReserve}
+      className="group text-left p-5 rounded-sm bg-secondary/40 border border-border transition-all hover:border-gold hover:bg-gold/5 hover:-translate-y-0.5 cursor-pointer w-full"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h4 className="font-display text-xl text-foreground group-hover:text-gold transition-colors">
             {svc.name}
           </h4>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            {svc.description}
-          </p>
         </div>
         <div className="text-right shrink-0">
           <div className="font-display text-2xl text-gold leading-none whitespace-nowrap">
-            {svc.priceFrom ? "od " : ""}
             {svc.price} Kč
           </div>
-          {svc.duration > 0 && (
-            <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1.5">
-              {svc.duration} min
-            </div>
-          )}
+          <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1.5">
+            {svc.duration} min
+          </div>
         </div>
       </div>
-      {bookable && (
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground group-hover:text-gold mt-3 transition-colors">
-          + přidat do rezervace →
-        </div>
-      )}
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground group-hover:text-gold mt-3 transition-colors">
+        Vybrat →
+      </div>
     </button>
   );
 }

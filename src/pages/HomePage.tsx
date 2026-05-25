@@ -5,6 +5,7 @@ import { About } from "@/components/About";
 import { Team } from "@/components/Team";
 import { Services } from "@/components/Services";
 import { Gallery } from "@/components/Gallery";
+import { Voucher } from "@/components/Voucher";
 import { Contact, Footer } from "@/components/Contact";
 import { BookingDialog } from "@/components/BookingDialog";
 import { getServiceNameById } from "@/lib/reservation-data";
@@ -27,6 +28,7 @@ export default function HomePage() {
         <Team />
         <Services onReserve={onReserve} />
         <Gallery />
+        <Voucher />
         <Contact />
       </main>
       <Footer />

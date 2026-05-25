@@ -34,6 +34,7 @@ import type { ServiceCategory } from "@/lib/reservation-data";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 import { withTimeout } from "@/lib/promise-timeout";
 import { toast } from "sonner";
+import { ReservationSummaryTable } from "@/components/ReservationSummaryTable";
 
 const SUBMIT_MS = 25_000;
 const FETCH_SLOTS_MS = 15_000;
@@ -245,7 +246,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
               "Potvrzovací e-mail se nepodařilo odeslat — na Vercelu zkontrolujte RESEND_API_KEY a RESEND_FROM.",
           });
         } else {
-          toast.success("Rezervace potvrzena — e-mail odeslán.");
+          toast.success("Rezervace je uložena.");
         }
       } catch (mailErr) {
         console.warn("[booking email]", mailErr);
@@ -326,15 +327,22 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
               <Check className="h-8 w-8 text-primary-foreground" strokeWidth={2.5} />
             </div>
             <h3 className="font-display text-3xl mb-2">Rezervace potvrzena</h3>
-            <p className="text-muted-foreground mb-6">
-              Těšíme se na vás! Brzy vám pošleme potvrzovací e-mail.
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto text-sm leading-relaxed">
+              Těšíme se na vás. Termín můžete zrušit odkazem v e-mailu (tlačítko Zrušit rezervaci).
             </p>
-            <div className="rounded-lg border border-border bg-muted/40 p-5 text-left text-sm space-y-1.5 max-w-sm mx-auto">
-              <div className="flex justify-between"><span className="text-muted-foreground">Služba</span><span className="font-medium">{serviceLabel}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Datum</span><span className="font-medium">{date && format(date, "EEEE d. MMMM yyyy", { locale: cs })}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Čas</span><span className="font-medium">{time}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Jméno</span><span className="font-medium">{name}</span></div>
-            </div>
+            <ReservationSummaryTable
+              className="max-w-md mx-auto"
+              rows={[
+                { label: "Služba", value: serviceLabel ?? "—" },
+                {
+                  label: "Datum",
+                  value: date ? format(date, "EEEE d. MMMM yyyy", { locale: cs }) : "—",
+                },
+                { label: "Čas", value: time || "—" },
+                { label: "Jméno", value: name },
+                { label: "E-mail", value: email },
+              ]}
+            />
             <Button type="button" className="mt-6" onClick={() => setOpen(false)}>
               Zavřít
             </Button>

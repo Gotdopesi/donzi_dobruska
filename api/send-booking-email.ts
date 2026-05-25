@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
 import { Resend } from "resend";
+import { getPublicSiteUrl } from "./lib/public-site-url";
 
 const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;
 
@@ -9,14 +10,6 @@ function cancelSecret(): string {
   const s = process.env.CANCEL_SECRET?.trim() || process.env.CRON_SECRET?.trim();
   if (!s) throw new Error("CANCEL_SECRET or CRON_SECRET is required for cancel links.");
   return s;
-}
-
-function siteBaseUrl(): string {
-  const explicit = process.env.SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`;
-  return "https://kadernictvi.dweby.cz";
 }
 
 function normalizeBookingTime(time: string): string {
@@ -34,7 +27,7 @@ function buildCancelReservationUrl(
   const payload = `${reservationId}|${bookingDate}|${time}`;
   const sig = createHmac("sha256", cancelSecret()).update(payload).digest("base64url");
   const token = Buffer.from(`${payload}|${sig}`).toString("base64url");
-  return `${siteBaseUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
+  return `${getPublicSiteUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
 }
 
 type BookingEmailPayload = {
@@ -68,22 +61,31 @@ function buildBookingConfirmationHtml(p: BookingEmailPayload): string {
         <tr><td style="padding:32px;">
           <p style="margin:0 0 16px;color:#333;font-size:16px;line-height:1.6;">Dobrý den, <strong>${p.customerName}</strong>,</p>
           <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">děkujeme za rezervaci. Těšíme se na vás v následujícím termínu:</p>
-          <table role="presentation" width="100%" style="background:#faf8f5;border:1px solid #e8e2d9;border-radius:8px;margin-bottom:24px;">
-            <tr><td style="padding:20px 24px;">
-              <p style="margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;">Služba</p>
-              <p style="margin:0 0 16px;color:#1a1a1a;font-size:17px;">${p.service}</p>
-              <p style="margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;">Datum a čas</p>
-              <p style="margin:0;color:#1a1a1a;font-size:17px;"><strong>${p.bookingDate}</strong> v <strong>${p.bookingTime}</strong></p>
-            </td></tr>
+          <table role="presentation" width="100%" style="background:#faf8f5;border:1px solid #e8e2d9;border-radius:8px;margin-bottom:24px;border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px 20px;color:#888;font-size:13px;width:38%;border-bottom:1px solid #e8e2d9;">Služba</td>
+              <td style="padding:12px 20px;color:#1a1a1a;font-size:15px;border-bottom:1px solid #e8e2d9;"><strong>${p.service}</strong></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px;color:#888;font-size:13px;border-bottom:1px solid #e8e2d9;">Datum</td>
+              <td style="padding:12px 20px;color:#1a1a1a;font-size:15px;border-bottom:1px solid #e8e2d9;"><strong>${p.bookingDate}</strong></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px;color:#888;font-size:13px;border-bottom:1px solid #e8e2d9;">Čas</td>
+              <td style="padding:12px 20px;color:#1a1a1a;font-size:15px;border-bottom:1px solid #e8e2d9;"><strong>${p.bookingTime}</strong></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 20px;color:#888;font-size:13px;">Telefon</td>
+              <td style="padding:12px 20px;color:#1a1a1a;font-size:15px;">${p.phone}</td>
+            </tr>
           </table>
           <p style="margin:0 0 24px;color:#555;font-size:14px;">Kontakt salónu: ${contact}</p>
-          <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;text-align:center;">Rezervaci je možné zrušit online po kliknutí na tlačítko níže. Zrušení lze provést nejdéle do 24&nbsp;hodin před termínem rezervace.</p>
+          <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">Rezervaci můžete zrušit online nejpozději 24&nbsp;hodin před termínem — tlačítko níže.</p>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
             <tr><td align="center">
               <a href="${p.cancelUrl}" style="display:inline-block;padding:14px 28px;background:#1a1a1a;color:#ffffff;text-decoration:none;font-size:15px;border-radius:8px;font-family:Georgia,serif;">Zrušit rezervaci</a>
             </td></tr>
           </table>
-          <p style="margin:16px 0 0;color:#888;font-size:12px;line-height:1.5;text-align:center;">Po kliknutí vás stránka ještě jednou požádá o potvrzení.</p>
         </td></tr>
         <tr><td style="padding:0 32px 28px;">
           <p style="margin:0;color:#aaa;font-size:12px;text-align:center;">Tato zpráva byla odeslána automaticky po online rezervaci.</p>

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { getPublicSiteUrl } from "./lib/public-site-url";
 
 const PRAGUE_TZ = "Europe/Prague";
 const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;
@@ -10,14 +11,6 @@ function cancelSecret(): string {
   const s = process.env.CANCEL_SECRET?.trim() || process.env.CRON_SECRET?.trim();
   if (!s) throw new Error("CANCEL_SECRET or CRON_SECRET is required for cancel links.");
   return s;
-}
-
-function siteBaseUrl(): string {
-  const explicit = process.env.SITE_URL?.trim() || process.env.VITE_SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`;
-  return "https://kadernictvi.dweby.cz";
 }
 
 export function createCancelToken(
@@ -37,7 +30,7 @@ export function buildCancelReservationUrl(
   bookingTime: string,
 ): string {
   const token = createCancelToken(reservationId, bookingDate, bookingTime);
-  return `${siteBaseUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
+  return `${getPublicSiteUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
 }
 
 function normalizeBookingTime(time: string): string {

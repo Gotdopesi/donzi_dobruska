@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppLink } from "@/lib/router";
+import { ReservationSummaryTable } from "@/components/ReservationSummaryTable";
 
 type Preview = {
   id: string;
@@ -50,6 +51,14 @@ export default function CancelReservationPage() {
     setError(null);
     try {
       const res = await fetch(`/api/cancel-booking?token=${encodeURIComponent(token)}`);
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        setError(
+          "Odkaz na zrušení není dostupný. Zkuste odkaz z nejnovějšího e-mailu nebo kontaktujte salón.",
+        );
+        setPreview(null);
+        return;
+      }
       const body = (await res.json().catch(() => ({}))) as Preview & { error?: string };
       if (!res.ok) {
         setError(body.error ?? "Rezervaci se nepodařilo načíst.");
@@ -152,16 +161,18 @@ export default function CancelReservationPage() {
               <CardTitle className="font-display text-xl">{preview.barbershopName}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <p>
-                <span className="text-muted-foreground">Jméno:</span> {preview.customerName}
-              </p>
-              <p>
-                <span className="text-muted-foreground">Služba:</span> {preview.service}
-              </p>
-              <p>
-                <span className="text-muted-foreground">Termín:</span>{" "}
-                <span className="capitalize">{dateLabel}</span> v {preview.bookingTime}
-              </p>
+              <ReservationSummaryTable
+                rows={[
+                  { label: "Salón", value: preview.barbershopName },
+                  { label: "Jméno", value: preview.customerName },
+                  { label: "Služba", value: preview.service },
+                  {
+                    label: "Datum",
+                    value: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
+                  },
+                  { label: "Čas", value: preview.bookingTime },
+                ]}
+              />
               {preview.canCancel ? (
                 <>
                   <p className="text-muted-foreground text-xs">

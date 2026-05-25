@@ -7,10 +7,27 @@ const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;
 
 /** Inline — Vercel serverless nenačítá api/lib/ jako samostatný modul. */
 function getPublicSiteUrl(): string {
-  const explicit =
-    process.env.SITE_URL?.trim() || process.env.VITE_SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
+  const raw = process.env.SITE_URL?.trim();
+  if (raw) {
+    try {
+      const origin = new URL(raw.startsWith("http") ? raw : `https://${raw}`).origin;
+      // *.vercel.app má Deployment Protection → přihlášení k Vercelu v e-mailu
+      if (!origin.includes("vercel.app")) return origin;
+    } catch {
+      /* fallback */
+    }
+  }
   return "https://donzi.dweby.cz";
+}
+
+/** Prohlížeč: cookie bypass, když je zapnutá ochrana preview (volitelné env z Vercelu). */
+function withDeploymentProtectionBypass(url: string): string {
+  const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+  if (!secret) return url;
+  const u = new URL(url);
+  u.searchParams.set("x-vercel-protection-bypass", secret);
+  u.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  return u.toString();
 }
 
 function cancelSecret(): string {
@@ -34,7 +51,8 @@ function buildCancelReservationUrl(
   const payload = `${reservationId}|${bookingDate}|${time}`;
   const sig = createHmac("sha256", cancelSecret()).update(payload).digest("base64url");
   const token = Buffer.from(`${payload}|${sig}`).toString("base64url");
-  return `${getPublicSiteUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
+  const path = `${getPublicSiteUrl()}/zrusit-rezervaci?token=${encodeURIComponent(token)}`;
+  return withDeploymentProtectionBypass(path);
 }
 
 type BookingEmailPayload = {

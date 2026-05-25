@@ -6,9 +6,15 @@ const PRAGUE_TZ = "Europe/Prague";
 
 /** Inline — Vercel serverless nenačítá api/lib/ jako samostatný modul. */
 function getPublicSiteUrl(): string {
-  const explicit =
-    process.env.SITE_URL?.trim() || process.env.VITE_SITE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
+  const raw = process.env.SITE_URL?.trim();
+  if (raw) {
+    try {
+      const origin = new URL(raw.startsWith("http") ? raw : `https://${raw}`).origin;
+      if (!origin.includes("vercel.app")) return origin;
+    } catch {
+      /* fallback */
+    }
+  }
   return "https://donzi.dweby.cz";
 }
 const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;

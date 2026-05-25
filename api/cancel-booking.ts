@@ -1,9 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { getPublicSiteUrl } from "./lib/public-site-url";
 
 const PRAGUE_TZ = "Europe/Prague";
+
+/** Inline — Vercel serverless nenačítá api/lib/ jako samostatný modul. */
+function getPublicSiteUrl(): string {
+  const explicit =
+    process.env.SITE_URL?.trim() || process.env.VITE_SITE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  return "https://donzi.dweby.cz";
+}
 const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;
 const MIN_HOURS_BEFORE = 24;
 

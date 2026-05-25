@@ -2,9 +2,16 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
 import { Resend } from "resend";
-import { getPublicSiteUrl } from "./lib/public-site-url";
 
 const REZERVACE_TABLES = ["showcase_rezervace", "rezervace"] as const;
+
+/** Inline — Vercel serverless nenačítá api/lib/ jako samostatný modul. */
+function getPublicSiteUrl(): string {
+  const explicit =
+    process.env.SITE_URL?.trim() || process.env.VITE_SITE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  return "https://donzi.dweby.cz";
+}
 
 function cancelSecret(): string {
   const s = process.env.CANCEL_SECRET?.trim() || process.env.CRON_SECRET?.trim();

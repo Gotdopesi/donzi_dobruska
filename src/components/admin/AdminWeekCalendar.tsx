@@ -5,33 +5,47 @@ import {
   endOfWeek,
   format,
   isSameDay,
+  parse,
   startOfWeek,
   subWeeks,
 } from "date-fns";
 import { cs } from "date-fns/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AdminReservationDetailList } from "@/components/admin/AdminReservationDetailList";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Reservation } from "@/lib/reservations-by-day";
 import { customerLabel } from "@/lib/reservations-by-day";
 import { getTimeSlotsForWeek, timeToMinutes } from "@/lib/booking-slots";
 import { getOpeningHoursForDay } from "@/lib/opening-hours";
+import { buildWeekColumnStates } from "@/lib/week-calendar-grid";
 
 const WEEKDAYS = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
+const ROW_HEIGHT_PX = 40;
 
 type Props = {
   rows: Reservation[];
   loading?: boolean;
+  readOnly?: boolean;
+  onDelete?: (id: string) => void;
 };
 
 function activeReservations(rows: Reservation[]) {
   return rows.filter((r) => r.status !== "canceled");
 }
 
-export function AdminWeekCalendar({ rows, loading }: Props) {
+export function AdminWeekCalendar({ rows, loading, readOnly, onDelete }: Props) {
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
+  const [picked, setPicked] = useState<Reservation | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const weekDays = useMemo(() => {
     const end = endOfWeek(weekStart, { weekStartsOn: 1 });
@@ -50,7 +64,27 @@ export function AdminWeekCalendar({ rows, loading }: Props) {
     return map;
   }, [rows]);
 
+  const columnStates = useMemo(
+    () =>
+      weekDays.map((d) => {
+        const key = format(d, "yyyy-MM-dd");
+        return buildWeekColumnStates(byDate.get(key) ?? [], timeSlots);
+      }),
+    [weekDays, byDate, timeSlots],
+  );
+
   const weekLabel = `${format(weekDays[0], "d. M.", { locale: cs })} – ${format(weekDays[6], "d. M. yyyy", { locale: cs })}`;
+
+  const openReservation = (r: Reservation) => {
+    setPicked(r);
+    setDialogOpen(true);
+  };
+
+  const pickedLabel = picked
+    ? format(parse(picked.booking_date, "yyyy-MM-dd", new Date()), "EEEE d. MMMM yyyy", {
+        locale: cs,
+      })
+    : "";
 
   return (
     <div className="space-y-4">
@@ -68,7 +102,7 @@ export function AdminWeekCalendar({ rows, loading }: Props) {
         <p className="text-center text-muted-foreground py-12 text-sm">Načítám…</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[720px] border-collapse text-xs">
+          <table className="w-full min-w-[720px] border-collapse text-xs table-fixed">
             <thead>
               <tr className="bg-muted/40">
                 <th className="p-2 w-14 text-left text-muted-foreground font-medium border-b border-border/60">
@@ -80,7 +114,7 @@ export function AdminWeekCalendar({ rows, loading }: Props) {
                     <th
                       key={d.toISOString()}
                       className={cn(
-                        "p-2 border-b border-border/60 text-center min-w-[88px]",
+                        "p-2 border-b border-border/60 text-center",
                         isSameDay(d, new Date()) && "bg-gold/10",
                         !hours && "opacity-40",
                       )}
@@ -93,40 +127,58 @@ export function AdminWeekCalendar({ rows, loading }: Props) {
               </tr>
             </thead>
             <tbody>
-              {timeSlots.map((slot) => (
-                <tr key={slot} className="border-b border-border/40 last:border-0">
-                  <td className="p-1.5 text-muted-foreground align-top whitespace-nowrap">{slot}</td>
-                  {weekDays.map((d) => {
+              {timeSlots.map((slot, slotIdx) => (
+                <tr key={slot} style={{ height: ROW_HEIGHT_PX }}>
+                  <td className="p-1.5 text-muted-foreground align-top border-b border-border/30 whitespace-nowrap">
+                    {slot}
+                  </td>
+                  {weekDays.map((d, dayIdx) => {
                     const key = format(d, "yyyy-MM-dd");
                     const hours = getOpeningHoursForDay(d);
                     const slotMin = timeToMinutes(slot);
-                    const dayRows = byDate.get(key) ?? [];
-                    const inSlot = dayRows.filter((r) => {
-                      const start = timeToMinutes(r.booking_time);
-                      const dur = Number(r.duration_minutes) || 60;
-                      return start <= slotMin && start + dur > slotMin;
-                    });
+                    const state = columnStates[dayIdx][slotIdx];
+
+                    if (state === "skip") return null;
 
                     if (!hours || slotMin < hours.open || slotMin >= hours.close) {
                       return (
-                        <td key={key + slot} className="p-0.5 bg-muted/20 align-top h-10" />
+                        <td
+                          key={key + slot}
+                          className="border-b border-border/30 bg-muted/20 p-0"
+                        />
                       );
                     }
 
-                    return (
-                      <td key={key + slot} className="p-0.5 align-top h-10">
-                        {inSlot.map((r) => (
-                          <div
-                            key={r.id}
-                            className="rounded px-1 py-0.5 bg-gold/25 border border-gold/40 text-[10px] leading-tight truncate"
-                            title={`${customerLabel(r)} — ${r.service}`}
+                    if (state && typeof state === "object") {
+                      const r = state.reservation;
+                      const endMin =
+                        timeToMinutes(r.booking_time) + (Number(r.duration_minutes) || 60);
+                      const endLabel = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+
+                      return (
+                        <td
+                          key={key + r.id}
+                          rowSpan={state.rowSpan}
+                          className="border-b border-border/30 p-1 align-top"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openReservation(r)}
+                            className="w-full h-full min-h-[2.5rem] rounded-md px-2 py-1.5 text-left bg-gold/25 border border-gold/50 hover:bg-gold/35 hover:border-gold transition-colors"
                           >
-                            <span className="font-medium">{r.booking_time}</span>{" "}
-                            {customerLabel(r).split(" ")[0]}
-                          </div>
-                        ))}
-                      </td>
-                    );
+                            <div className="font-medium text-[11px] leading-tight truncate">
+                              {customerLabel(r)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground truncate">{r.service}</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {r.booking_time} – {endLabel}
+                            </div>
+                          </button>
+                        </td>
+                      );
+                    }
+
+                    return <td key={key + slot} className="border-b border-border/30 p-0" />;
                   })}
                 </tr>
               ))}
@@ -134,6 +186,25 @@ export function AdminWeekCalendar({ rows, loading }: Props) {
           </table>
         </div>
       )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl capitalize">{pickedLabel}</DialogTitle>
+          </DialogHeader>
+          {picked && (
+            <AdminReservationDetailList
+              rows={[picked]}
+              readOnly={readOnly}
+              onDelete={(id) => {
+                onDelete?.(id);
+                setDialogOpen(false);
+                setPicked(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

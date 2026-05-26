@@ -1,17 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  addMonths,
-  addWeeks,
-  eachDayOfInterval,
-  endOfWeek,
-  format,
-  isAfter,
-  isBefore,
-  parse,
-  startOfMonth,
-  startOfWeek,
-  subWeeks,
-} from "date-fns";
+import { format } from "date-fns";
 import { cs } from "date-fns/locale";
 import {
   BarChart3,
@@ -28,17 +16,27 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { REZERVACE_TABLE } from "@/lib/rezervace";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
+import { displayAmounts, showPlannedColumn } from "@/lib/admin-revenue-display";
 import {
-  buildRevenueTimeline,
-  displayAmounts,
-  maxRevenueMonth,
-  minRevenueMonth,
-  showPlannedColumn,
-} from "@/lib/admin-revenue-display";
+  aggregateVydelkyInScope,
+  buildPerformanceSeries,
+  buildRevenueChartSeries,
+  buildWeekActivityChart,
+  monthKeysInScope,
+  periodScopeLabel,
+  primaryMonthKey,
+  reservationsInScope,
+  shiftPeriodAnchor,
+  type StatsPeriod,
+} from "@/lib/admin-statistics-period";
 import { useAdminBarbershop } from "@/lib/use-admin-barbershop";
 import { useAdminSession } from "@/lib/use-admin-session";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminPeriodToggle } from "@/components/admin/AdminPeriodToggle";
 import { AdminRevenueDetailDialog } from "@/components/admin/AdminRevenueDetailDialog";
+import { AdminViewToggle } from "@/components/admin/AdminViewToggle";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -77,37 +75,67 @@ type CatalogService = {
   is_active: boolean;
 };
 
+function aggregateServicesFromReservations(rows: Reservation[]): ServiceStatsRow[] {
+  const map = new Map<string, ServiceStatsRow>();
+  for (const r of rows) {
+    if (r.status === "canceled") continue;
+    const name = r.service?.trim() || "Neznámá služba";
+    const prev = map.get(name);
+    if (prev) {
+      prev.count_total += 1;
+      map.set(name, prev);
+    } else {
+      map.set(name, {
+        service_id: null,
+        service_name: name,
+        price: 0,
+        count_total: 1,
+        amount_total: 0,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.count_total - a.count_total);
+}
+
 export default function AdminStatisticsPage() {
   const { ready, authed, signOut } = useAdminSession();
   const { barbershopId, shopName } = useAdminBarbershop();
 
-  const [month, setMonth] = useState(() => startOfMonth(new Date()));
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>("month");
+  const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
   const [vydelkyRows, setVydelkyRows] = useState<VydelkyRow[]>([]);
   const [serviceStats, setServiceStats] = useState<ServiceStatsRow[]>([]);
   const [catalog, setCatalog] = useState<CatalogService[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailMonth, setDetailMonth] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "chart">("table");
 
-  const monthKey = format(month, "yyyy-MM");
-  const monthLabel = format(month, "LLLL yyyy", { locale: cs });
+  const scopeLabel = periodScopeLabel(statsPeriod, periodAnchor);
+  const monthKey = primaryMonthKey(statsPeriod, periodAnchor);
+  const showPlanned = statsPeriod !== "week" && showPlannedColumn(monthKey);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const keys = monthKeysInScope(statsPeriod, periodAnchor);
+      const svcQuery =
+        statsPeriod === "week"
+          ? Promise.resolve({ data: [], error: null })
+          : supabase
+              .from(SHOWCASE_TABLES.vydelkySluzby)
+              .select("service_id, service_name, price, count_total, amount_total")
+              .eq("barbershop_id", barbershopId)
+              .in("month_key", keys)
+              .order("count_total", { ascending: false });
+
       const [vyd, svc, cat, rez] = await Promise.all([
         supabase
           .from(SHOWCASE_TABLES.vydelky)
           .select("month_key, earned, planned, total")
           .eq("barbershop_id", barbershopId)
           .order("month_key", { ascending: false }),
-        supabase
-          .from(SHOWCASE_TABLES.vydelkySluzby)
-          .select("service_id, service_name, price, count_total, amount_total")
-          .eq("barbershop_id", barbershopId)
-          .eq("month_key", monthKey)
-          .order("count_total", { ascending: false }),
+        svcQuery,
         supabase
           .from(SHOWCASE_TABLES.services)
           .select("id, name, price, duration_minutes, is_active")
@@ -116,7 +144,7 @@ export default function AdminStatisticsPage() {
           .order("name"),
         supabase
           .from(REZERVACE_TABLE)
-          .select("id, booking_date, booking_time, status, sms_sent, email")
+          .select("id, booking_date, booking_time, status, sms_sent, email, service")
           .eq("barbershop_id", barbershopId),
       ]);
 
@@ -131,18 +159,6 @@ export default function AdminStatisticsPage() {
           })),
         );
 
-      if (!svc.error) {
-        setServiceStats(
-          (svc.data ?? []).map((r) => ({
-            service_id: r.service_id,
-            service_name: r.service_name,
-            price: Number(r.price),
-            count_total: Number(r.count_total),
-            amount_total: Number(r.amount_total),
-          })),
-        );
-      }
-
       if (!cat.error) {
         setCatalog(
           (cat.data ?? []).map((s) => ({
@@ -155,68 +171,109 @@ export default function AdminStatisticsPage() {
         );
       }
 
-      if (!rez.error) setReservations((rez.data ?? []) as Reservation[]);
+      const allReservations = (rez.data ?? []) as Reservation[];
+      if (!rez.error) setReservations(allReservations);
+
+      if (statsPeriod === "week") {
+        setServiceStats(
+          aggregateServicesFromReservations(
+            reservationsInScope(allReservations, statsPeriod, periodAnchor),
+          ),
+        );
+      } else if (!svc.error) {
+        const raw = (svc.data ?? []) as ServiceStatsRow[];
+        const merged = new Map<string, ServiceStatsRow>();
+        for (const r of raw) {
+          const key = r.service_name;
+          const prev = merged.get(key);
+          if (prev) {
+            prev.count_total += r.count_total;
+            prev.amount_total += r.amount_total;
+          } else {
+            merged.set(key, { ...r });
+          }
+        }
+        setServiceStats([...merged.values()].sort((a, b) => b.count_total - a.count_total));
+      }
     } finally {
       setLoading(false);
     }
-  }, [barbershopId, monthKey]);
+  }, [barbershopId, statsPeriod, periodAnchor]);
 
   useEffect(() => {
     if (ready && authed) void load();
   }, [ready, authed, load]);
 
-  const current = useMemo(() => {
-    const raw = vydelkyRows.find((r) => r.month_key === monthKey) ?? {
-      month_key: monthKey,
-      earned: 0,
-      planned: 0,
-      total: 0,
-    };
-    return displayAmounts(raw);
-  }, [vydelkyRows, monthKey]);
-
-  const { past: historyPast, upcoming: historyUpcoming } = useMemo(
-    () => buildRevenueTimeline(vydelkyRows),
-    [vydelkyRows],
+  const scopedReservations = useMemo(
+    () => reservationsInScope(reservations, statsPeriod, periodAnchor),
+    [reservations, statsPeriod, periodAnchor],
   );
 
-  const monthReservations = useMemo(
-    () => reservations.filter((r) => r.booking_date.startsWith(monthKey)),
-    [reservations, monthKey],
+  const current = useMemo(
+    () => displayAmounts(aggregateVydelkyInScope(vydelkyRows, statsPeriod, periodAnchor)),
+    [vydelkyRows, statsPeriod, periodAnchor],
   );
 
   const canceledCount = useMemo(
-    () => monthReservations.filter((r) => r.status === "canceled").length,
-    [monthReservations],
+    () => scopedReservations.filter((r) => r.status === "canceled").length,
+    [scopedReservations],
   );
 
   const smsSentCount = useMemo(
-    () => monthReservations.filter((r) => r.sms_sent === true).length,
-    [monthReservations],
+    () => scopedReservations.filter((r) => r.sms_sent === true).length,
+    [scopedReservations],
   );
 
-  const weekDays = useMemo(() => {
-    const end = endOfWeek(weekStart, { weekStartsOn: 1 });
-    return eachDayOfInterval({ start: weekStart, end });
-  }, [weekStart]);
+  const performance = useMemo(
+    () => buildPerformanceSeries(reservations, statsPeriod, periodAnchor),
+    [reservations, statsPeriod, periodAnchor],
+  );
 
-  const weekPerformance = useMemo(() => {
-    return weekDays.map((d) => {
-      const key = format(d, "yyyy-MM-dd");
-      const count = reservations.filter(
-        (r) => r.booking_date === key && r.status !== "canceled",
-      ).length;
-      return {
-        key,
-        label: format(d, "EEE d. M.", { locale: cs }),
-        count,
-      };
-    });
-  }, [weekDays, reservations]);
+  const maxPerformance = Math.max(...performance.map((p) => p.count), 1);
 
-  const maxWeekCount = Math.max(...weekPerformance.map((w) => w.count), 1);
-  const canGoPrev = !isBefore(startOfMonth(month), minRevenueMonth());
-  const canGoNext = !isAfter(startOfMonth(month), maxRevenueMonth());
+  const revenueChartData = useMemo(() => {
+    if (statsPeriod === "week") {
+      return buildWeekActivityChart(reservations, statsPeriod, periodAnchor);
+    }
+    return buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
+  }, [reservations, vydelkyRows, statsPeriod, periodAnchor]);
+
+  const performanceTitle =
+    statsPeriod === "week"
+      ? "Výkonost týdne"
+      : statsPeriod === "year"
+        ? "Výkonost roku"
+        : "Výkonost měsíce";
+
+  const revenueChartTitle =
+    statsPeriod === "week"
+      ? "Rezervace v týdnu"
+      : statsPeriod === "year"
+        ? "Tržby v roce"
+        : "Tržby (12 měsíců)";
+
+  const weekChartConfig = {
+    count: { label: "Rezervace", color: "hsl(var(--gold))" },
+    planned: { label: "Počet", color: "hsl(var(--gold))" },
+  } as const;
+
+  const serviceChartData = useMemo(
+    () =>
+      serviceStats.map((r) => ({
+        name: r.service_name.length > 18 ? `${r.service_name.slice(0, 16)}…` : r.service_name,
+        count: r.count_total,
+      })),
+    [serviceStats],
+  );
+
+  const serviceChartConfig = {
+    count: { label: "Počet", color: "hsl(var(--gold))" },
+  } as const;
+
+  const revenueChartConfig = {
+    earned: { label: "Vyděláno", color: "hsl(var(--gold))" },
+    planned: { label: statsPeriod === "week" ? "Rezervace" : "V plánu", color: "hsl(var(--muted-foreground))" },
+  } as const;
 
   if (!ready || !authed) {
     return (
@@ -253,98 +310,135 @@ export default function AdminStatisticsPage() {
 
       <AdminNav />
 
-      <div className="flex items-center justify-center gap-4 mb-6">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          disabled={!canGoPrev}
-          onClick={() => setMonth((m) => addMonths(m, -1))}
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <span className="font-display text-xl capitalize min-w-[180px] text-center">{monthLabel}</span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          disabled={!canGoNext}
-          onClick={() => setMonth((m) => addMonths(m, 1))}
-        >
-          <ChevronRight className="h-5 w-5" />
-        </Button>
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+        <AdminPeriodToggle
+          value={statsPeriod}
+          onChange={(p) => {
+            setStatsPeriod(p);
+            setPeriodAnchor(new Date());
+          }}
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setPeriodAnchor((a) => shiftPeriodAnchor(statsPeriod, a, -1))}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <span className="font-display text-lg capitalize min-w-[200px] text-center">{scopeLabel}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setPeriodAnchor((a) => shiftPeriodAnchor(statsPeriod, a, 1))}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+        <AdminViewToggle value={viewMode} onChange={setViewMode} />
       </div>
 
       <section className="mb-10">
         <h2 className="font-display text-2xl mb-4 flex items-center gap-2">
           <TrendingUp className="h-6 w-6 text-gold" />
           Tržby
+          <span className="text-sm font-normal text-muted-foreground capitalize">— {scopeLabel}</span>
         </h2>
-        <div className={cn("grid gap-4 mb-6", showPlannedColumn(monthKey) ? "md:grid-cols-3" : "md:grid-cols-2")}>
-          <Card className="border-gold/30 bg-gradient-to-br from-gold/10 to-transparent">
+        {statsPeriod === "week" ? (
+          <Card className="border-gold/30 bg-gradient-to-br from-gold/10 to-transparent mb-6">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-normal text-muted-foreground">Už vyděláno</CardTitle>
+              <CardTitle className="text-sm font-normal text-muted-foreground">
+                Rezervace v období
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="font-display text-3xl">{formatCurrency(current.earned)}</p>
+              <p className="font-display text-3xl">
+                {scopedReservations.filter((r) => r.status !== "canceled").length}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Měsíční tržby zobrazte v režimu Měsíc nebo Rok.
+              </p>
             </CardContent>
           </Card>
-          {showPlannedColumn(monthKey) && (
-            <Card>
+        ) : (
+          <div className={cn("grid gap-4 mb-6", showPlanned ? "md:grid-cols-3" : "md:grid-cols-2")}>
+            <Card className="border-gold/30 bg-gradient-to-br from-gold/10 to-transparent">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-normal text-muted-foreground">V plánu</CardTitle>
+                <CardTitle className="text-sm font-normal text-muted-foreground">Už vyděláno</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="font-display text-3xl">{formatCurrency(current.planned)}</p>
+                <p className="font-display text-3xl">{formatCurrency(current.earned)}</p>
               </CardContent>
             </Card>
-          )}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-normal text-muted-foreground">Celkem</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="font-display text-3xl">{formatCurrency(current.total)}</p>
-            </CardContent>
-          </Card>
-        </div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setDetailMonth(monthKey)}>
-          Detail měsíce — služby
-        </Button>
+            {showPlanned && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-normal text-muted-foreground">V plánu</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="font-display text-3xl">{formatCurrency(current.planned)}</p>
+                </CardContent>
+              </Card>
+            )}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-normal text-muted-foreground">Celkem</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="font-display text-3xl">{formatCurrency(current.total)}</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {statsPeriod === "month" && (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setDetailMonth(monthKey)}>
+            Detail měsíce — služby
+          </Button>
+        )}
       </section>
 
       <section className="mb-10">
-        <h2 className="font-display text-2xl mb-4">Výkonost týdne</h2>
-        <div className="flex items-center gap-4 mb-4">
-          <Button type="button" variant="outline" size="icon" onClick={() => setWeekStart((w) => subWeeks(w, 1))}>
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <span className="text-sm capitalize text-muted-foreground">
-            {format(weekDays[0], "d. M.", { locale: cs })} – {format(weekDays[6], "d. M. yyyy", { locale: cs })}
-          </span>
-          <Button type="button" variant="outline" size="icon" onClick={() => setWeekStart((w) => addWeeks(w, 1))}>
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-7">
-          {weekPerformance.map((w) => (
-            <Card key={w.key} className="border-border/60">
-              <CardHeader className="pb-1 pt-3 px-3">
-                <CardTitle className="text-xs font-normal capitalize text-muted-foreground">{w.label}</CardTitle>
-              </CardHeader>
-              <CardContent className="px-3 pb-3">
-                <p className="font-display text-2xl">{w.count}</p>
-                <div className="mt-2 h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                  <div
-                    className="h-full bg-gold/70 rounded-full"
-                    style={{ width: `${Math.max(8, (w.count / maxWeekCount) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1">zákazníků</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <h2 className="font-display text-2xl mb-4">{performanceTitle}</h2>
+        {viewMode === "chart" ? (
+          <ChartContainer config={weekChartConfig} className="h-[280px] w-full">
+            <BarChart data={performance} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
+        ) : (
+          <div
+            className={cn(
+              "grid gap-3",
+              statsPeriod === "week" ? "sm:grid-cols-7" : statsPeriod === "year" ? "sm:grid-cols-6 lg:grid-cols-12" : "sm:grid-cols-7",
+            )}
+          >
+            {performance.map((w) => (
+              <Card key={w.key} className="border-border/60">
+                <CardHeader className="pb-1 pt-3 px-3">
+                  <CardTitle className="text-xs font-normal capitalize text-muted-foreground">
+                    {w.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3">
+                  <p className="font-display text-2xl">{w.count}</p>
+                  <div className="mt-2 h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                    <div
+                      className="h-full bg-gold/70 rounded-full"
+                      style={{ width: `${Math.max(8, (w.count / maxPerformance) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">rezervací</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 mb-10">
@@ -357,7 +451,7 @@ export default function AdminStatisticsPage() {
           </CardHeader>
           <CardContent>
             <p className="font-display text-3xl">{canceledCount}</p>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">za {monthLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1 capitalize">za {scopeLabel}</p>
           </CardContent>
         </Card>
         <Card>
@@ -369,7 +463,7 @@ export default function AdminStatisticsPage() {
           </CardHeader>
           <CardContent>
             <p className="font-display text-3xl">{smsSentCount}</p>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">za {monthLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1 capitalize">za {scopeLabel}</p>
           </CardContent>
         </Card>
       </div>
@@ -399,69 +493,97 @@ export default function AdminStatisticsPage() {
             </TableBody>
           </Table>
         </div>
-        {serviceStats.length > 0 && (
-          <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
-            <div className="px-5 py-3 border-b border-border/60">
-              <p className="text-sm text-muted-foreground capitalize">Objednávky služeb — {monthLabel}</p>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Služba</TableHead>
-                  <TableHead className="text-right">Počet</TableHead>
-                  <TableHead className="text-right">Tržby</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {serviceStats.map((r) => (
-                  <TableRow key={`${r.service_id}-${r.service_name}`}>
-                    <TableCell>{r.service_name}</TableCell>
-                    <TableCell className="text-right">{r.count_total}×</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(r.amount_total)}
-                    </TableCell>
+        {serviceStats.length > 0 &&
+          (viewMode === "chart" ? (
+            <ChartContainer config={serviceChartConfig} className="h-[300px] w-full">
+              <BarChart
+                data={serviceChartData}
+                layout="vertical"
+                margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={100}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={4}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="count" fill="var(--color-count)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <div className="rounded-xl border border-border bg-card/50 overflow-hidden">
+              <div className="px-5 py-3 border-b border-border/60">
+                <p className="text-sm text-muted-foreground capitalize">
+                  Objednávky služeb — {scopeLabel}
+                </p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Služba</TableHead>
+                    <TableHead className="text-right">Počet</TableHead>
+                    {statsPeriod !== "week" && <TableHead className="text-right">Tržby</TableHead>}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+                </TableHeader>
+                <TableBody>
+                  {serviceStats.map((r) => (
+                    <TableRow key={r.service_name}>
+                      <TableCell>{r.service_name}</TableCell>
+                      <TableCell className="text-right">{r.count_total}×</TableCell>
+                      {statsPeriod !== "week" && (
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(r.amount_total)}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ))}
       </section>
 
-      {(historyUpcoming.length > 0 || historyPast.length > 0) && (
-        <section className="rounded-xl border border-border bg-card/50 p-6 space-y-8">
-          {historyUpcoming.length > 0 && (
-            <div>
-              <h3 className="font-display text-xl mb-4">Nadcházející měsíce</h3>
-              <div className="space-y-3">
-                {historyUpcoming.map((h) => (
-                  <div key={h.key} className="flex items-center gap-4 text-sm">
-                    <span className="w-36 capitalize text-muted-foreground">{h.label}</span>
-                    <span className="font-medium">{formatCurrency(h.planned)}</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setDetailMonth(h.key)}>
-                      Detail
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {historyPast.length > 0 && (
-            <div>
-              <h3 className="font-display text-xl mb-4">Minulé měsíce</h3>
-              <div className="space-y-3">
-                {historyPast.map((h) => (
-                  <div key={h.key} className="flex items-center gap-4 text-sm">
-                    <span className="w-36 capitalize text-muted-foreground">{h.label}</span>
-                    <span className="font-medium">{formatCurrency(h.earned)}</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setDetailMonth(h.key)}>
-                      Detail
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {viewMode === "chart" && revenueChartData.length > 0 && (
+        <section className="mb-10">
+          <h2 className="font-display text-2xl mb-4">{revenueChartTitle}</h2>
+          <ChartContainer config={revenueChartConfig} className="h-[300px] w-full">
+            <BarChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                width={48}
+                tickFormatter={(v) =>
+                  statsPeriod === "week" ? String(v) : `${Math.round(Number(v) / 1000)}k`
+                }
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    formatter={(value, name) =>
+                      statsPeriod === "week"
+                        ? [`${value} rezervací`, name === "planned" ? "Počet" : String(name)]
+                        : formatCurrency(Number(value))
+                    }
+                  />
+                }
+              />
+              {statsPeriod === "week" ? (
+                <Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} />
+              ) : (
+                <>
+                  <Bar dataKey="earned" fill="var(--color-earned)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} />
+                </>
+              )}
+            </BarChart>
+          </ChartContainer>
         </section>
       )}
 

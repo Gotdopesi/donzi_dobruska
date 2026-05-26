@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, parse } from "date-fns";
 import { cs } from "date-fns/locale";
-import { Crown, Loader2, LogOut, Mail, RefreshCw, User } from "lucide-react";
+import { Crown, Loader2, LogOut, Mail, RefreshCw, Save, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { REZERVACE_TABLE } from "@/lib/rezervace";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 import { useAdminBarbershop } from "@/lib/use-admin-barbershop";
 import { useAdminSession } from "@/lib/use-admin-session";
@@ -13,13 +12,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import type { Reservation } from "@/lib/reservations-by-day";
-import { customerLabel } from "@/lib/reservations-by-day";
 
 type Customer = {
   id: number;
@@ -36,41 +36,26 @@ export default function AdminCustomersPage() {
   const { ready, authed, signOut } = useAdminSession();
   const { barbershopId, shopName } = useAdminBarbershop();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Customer | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [custRes, rezRes] = await Promise.all([
-        supabase
-          .from(SHOWCASE_TABLES.zakaznici)
-          .select("*")
-          .eq("barbershop_id", barbershopId)
-          .order("visit_count", { ascending: false }),
-        supabase
-          .from(REZERVACE_TABLE)
-          .select("*")
-          .eq("barbershop_id", barbershopId)
-          .order("booking_date", { ascending: false }),
-      ]);
+    const { data, error } = await supabase
+      .from(SHOWCASE_TABLES.zakaznici)
+      .select("*")
+      .eq("barbershop_id", barbershopId)
+      .order("visit_count", { ascending: false });
 
-      if (custRes.error) {
-        toast.error("Nepodařilo se načíst zákazníky.", { description: custRes.error.message });
-        return;
-      }
-      if (rezRes.error) {
-        toast.error("Nepodařilo se načíst historii.", { description: rezRes.error.message });
-        return;
-      }
-
-      setCustomers((custRes.data ?? []) as Customer[]);
-      setReservations((rezRes.data ?? []) as Reservation[]);
-    } finally {
-      setLoading(false);
+    setLoading(false);
+    if (error) {
+      toast.error("Nepodařilo se načíst zákazníky.", { description: error.message });
+      return;
     }
+    setCustomers((data ?? []) as Customer[]);
   }, [barbershopId]);
 
   useEffect(() => {
@@ -79,33 +64,31 @@ export default function AdminCustomersPage() {
 
   const topCustomers = useMemo(() => customers.slice(0, 5), [customers]);
 
-  const historyByMonth = useMemo(() => {
-    if (!selected) return [];
-    const email = selected.email.toLowerCase();
-    const rows = reservations.filter(
-      (r) => r.email?.toLowerCase() === email && r.status !== "canceled",
-    );
-    const map = new Map<string, Reservation[]>();
-    for (const r of rows) {
-      const mk = r.booking_date.slice(0, 7);
-      const list = map.get(mk) ?? [];
-      list.push(r);
-      map.set(mk, list);
-    }
-    return [...map.entries()]
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([monthKey, items]) => ({
-        monthKey,
-        label: format(parse(`${monthKey}-01`, "yyyy-MM-dd", new Date()), "LLLL yyyy", {
-          locale: cs,
-        }),
-        items: items.sort((a, b) => b.booking_date.localeCompare(a.booking_date)),
-      }));
-  }, [selected, reservations]);
-
   const openCustomer = (c: Customer) => {
     setSelected(c);
+    setNoteDraft(c.note ?? "");
     setDetailOpen(true);
+  };
+
+  const saveNote = async () => {
+    if (!selected) return;
+    setSaving(true);
+    const note = noteDraft.trim() || null;
+    const { error } = await supabase
+      .from(SHOWCASE_TABLES.zakaznici)
+      .update({ note, updated_at: new Date().toISOString() })
+      .eq("id", selected.id);
+
+    setSaving(false);
+    if (error) {
+      toast.error("Poznámku se nepodařilo uložit.", { description: error.message });
+      return;
+    }
+
+    const updated = { ...selected, note };
+    setSelected(updated);
+    setCustomers((prev) => prev.map((c) => (c.id === selected.id ? updated : c)));
+    toast.success("Poznámka uložena.");
   };
 
   if (!ready || !authed) {
@@ -125,7 +108,7 @@ export default function AdminCustomersPage() {
           <h1 className="font-display text-4xl md:text-5xl">Zákazníci</h1>
           <div className="hairline w-20 mt-4 mb-2" />
           <p className="text-muted-foreground text-sm">
-            {shopName ?? "Salón"} — {customers.length} zákazníků v evidenci
+            {shopName ?? "Salón"} — {customers.length} zákazníků
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -144,7 +127,7 @@ export default function AdminCustomersPage() {
 
       {topCustomers.length > 0 && (
         <div className="grid gap-4 md:grid-cols-3 mb-8">
-          <Card className="md:col-span-1 border-gold/30">
+          <Card className="border-gold/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-normal text-muted-foreground flex items-center gap-2">
                 <Crown className="h-4 w-4 text-gold" />
@@ -160,6 +143,23 @@ export default function AdminCustomersPage() {
               </p>
             </CardContent>
           </Card>
+          <Card className="md:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-normal text-muted-foreground">Top 5</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {topCustomers.map((c, i) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => openCustomer(c)}
+                  className="rounded-full border border-border px-3 py-1 text-xs hover:border-gold/50 hover:bg-gold/10 transition-colors"
+                >
+                  {i + 1}. {c.first_name} ({c.visit_count}×)
+                </button>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -170,7 +170,7 @@ export default function AdminCustomersPage() {
           </div>
         ) : customers.length === 0 ? (
           <p className="p-8 text-center text-muted-foreground text-sm">
-            Zatím žádní zákazníci — přidají se automaticky z rezervací.
+            Zatím žádní zákazníci — přidají se z rezervací.
           </p>
         ) : (
           <ul className="divide-y divide-border/60">
@@ -199,7 +199,8 @@ export default function AdminCustomersPage() {
                     <p className="text-sm font-medium">{c.visit_count}× návštěva</p>
                     {c.last_visit_date && (
                       <p className="text-xs text-muted-foreground">
-                        naposledy {format(parse(c.last_visit_date, "yyyy-MM-dd", new Date()), "d. M. yyyy")}
+                        naposledy{" "}
+                        {format(parse(c.last_visit_date, "yyyy-MM-dd", new Date()), "d. M. yyyy")}
                       </p>
                     )}
                   </div>
@@ -211,7 +212,7 @@ export default function AdminCustomersPage() {
       </div>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md">
           {selected && (
             <>
               <DialogHeader>
@@ -221,46 +222,40 @@ export default function AdminCustomersPage() {
               </DialogHeader>
               <div className="space-y-4 text-sm">
                 <p className="text-muted-foreground">{selected.email}</p>
-                {selected.note && (
-                  <p className="rounded-md bg-muted/50 px-3 py-2 border border-border/60">
-                    <span className="text-muted-foreground">Poznámka: </span>
-                    {selected.note}
+                <div className="rounded-lg border border-gold/30 bg-gold/5 px-4 py-3">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+                    Počet návštěv
                   </p>
-                )}
-                <p>
-                  Celkem <strong>{selected.visit_count}</strong> návštěv
-                </p>
-                <h3 className="font-display text-lg pt-2 border-t border-border/60">
-                  Historie po měsících
-                </h3>
-                {historyByMonth.length === 0 ? (
-                  <p className="text-muted-foreground">Žádné rezervace.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {historyByMonth.map((m) => (
-                      <div key={m.monthKey}>
-                        <p className="text-xs uppercase tracking-wider text-gold mb-2 capitalize">
-                          {m.label}
-                        </p>
-                        <ul className="space-y-2">
-                          {m.items.map((r) => (
-                            <li
-                              key={r.id}
-                              className="flex justify-between gap-2 rounded-md border border-border/50 px-3 py-2"
-                            >
-                              <span className="truncate">{r.service}</span>
-                              <span className="text-muted-foreground shrink-0">
-                                {format(parse(r.booking_date, "yyyy-MM-dd", new Date()), "d. M.")}{" "}
-                                {r.booking_time}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  <p className="font-display text-3xl text-foreground">{selected.visit_count}</p>
+                  {selected.first_visit_date && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      První návštěva:{" "}
+                      {format(parse(selected.first_visit_date, "yyyy-MM-dd", new Date()), "d. M. yyyy", {
+                        locale: cs,
+                      })}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="customer-note">Poznámka</Label>
+                  <Textarea
+                    id="customer-note"
+                    rows={4}
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Preference, alergie, styl střihu…"
+                  />
+                </div>
               </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>
+                  Zavřít
+                </Button>
+                <Button type="button" onClick={() => void saveNote()} disabled={saving}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {saving ? "Ukládám…" : "Uložit poznámku"}
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

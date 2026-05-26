@@ -126,3 +126,9 @@ DROP POLICY IF EXISTS "admin_select_showcase_zakaznici" ON public.showcase_zakaz
 CREATE POLICY "admin_select_showcase_zakaznici"
   ON public.showcase_zakaznici FOR SELECT TO authenticated
   USING (barbershop_id = public.showcase_current_barbershop_id());
+
+DROP POLICY IF EXISTS "admin_update_showcase_zakaznici" ON public.showcase_zakaznici;
+CREATE POLICY "admin_update_showcase_zakaznici"
+  ON public.showcase_zakaznici FOR UPDATE TO authenticated
+  USING (barbershop_id = public.showcase_current_barbershop_id())
+  WITH CHECK (barbershop_id = public.showcase_current_barbershop_id());

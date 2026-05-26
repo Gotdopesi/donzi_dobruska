@@ -149,7 +149,12 @@ export default function AdminReservationsPage() {
             onDelete={(id) => void deleteReservation(id)}
           />
         ) : (
-          <AdminWeekCalendar rows={rows} loading={loadingList} />
+          <AdminWeekCalendar
+            rows={rows}
+            loading={loadingList}
+            readOnly={readOnly}
+            onDelete={(id) => void deleteReservation(id)}
+          />
         )}
       </div>
 

@@ -31,6 +31,7 @@ const ROW_HEIGHT_PX = 40;
 
 type Props = {
   rows: Reservation[];
+  barbershopId: number;
   loading?: boolean;
   readOnly?: boolean;
   onDelete?: (id: string) => void;
@@ -40,7 +41,7 @@ function activeReservations(rows: Reservation[]) {
   return rows.filter((r) => r.status !== "canceled");
 }
 
-export function AdminWeekCalendar({ rows, loading, readOnly, onDelete }: Props) {
+export function AdminWeekCalendar({ rows, barbershopId, loading, readOnly, onDelete }: Props) {
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
@@ -195,6 +196,7 @@ export function AdminWeekCalendar({ rows, loading, readOnly, onDelete }: Props) 
           {picked && (
             <AdminReservationDetailList
               rows={[picked]}
+              barbershopId={barbershopId}
               readOnly={readOnly}
               onDelete={(id) => {
                 onDelete?.(id);

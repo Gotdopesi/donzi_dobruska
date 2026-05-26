@@ -1,12 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { format, parse } from "date-fns";
+import {
+  addMonths,
+  addYears,
+  format,
+  parse,
+  startOfMonth,
+  startOfYear,
+} from "date-fns";
 import { cs } from "date-fns/locale";
-import { Crown, Loader2, LogOut, Mail, RefreshCw, Save, User } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+  Loader2,
+  LogOut,
+  Mail,
+  RefreshCw,
+  Save,
+  User,
+  XCircle,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { REZERVACE_TABLE } from "@/lib/rezervace";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
+import {
+  buildCustomerInsights,
+  completedVisitsInPeriod,
+  filterCustomersForPeriod,
+  type CustomerInsight,
+  type CustomerListPeriod,
+  type CustomerRecord,
+} from "@/lib/customer-insights";
 import { useAdminBarbershop } from "@/lib/use-admin-barbershop";
 import { useAdminSession } from "@/lib/use-admin-session";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminPeriodToggle } from "@/components/admin/AdminPeriodToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -19,54 +48,97 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { Reservation } from "@/lib/reservations-by-day";
 import { toast } from "sonner";
 
-type Customer = {
-  id: number;
-  email: string;
-  first_name: string;
-  last_name: string;
-  note: string | null;
-  visit_count: number;
-  first_visit_date: string | null;
-  last_visit_date: string | null;
-};
+type CustomerRow = CustomerRecord & { insight: CustomerInsight };
+
+function periodLabel(period: CustomerListPeriod, anchor: Date): string {
+  if (period === "year") return format(startOfYear(anchor), "yyyy");
+  return format(startOfMonth(anchor), "LLLL yyyy", { locale: cs });
+}
+
+function shiftAnchor(period: CustomerListPeriod, anchor: Date, delta: number): Date {
+  return period === "year" ? addYears(anchor, delta) : addMonths(anchor, delta);
+}
 
 export default function AdminCustomersPage() {
   const { ready, authed, signOut } = useAdminSession();
   const { barbershopId, shopName } = useAdminBarbershop();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Customer | null>(null);
+  const [listPeriod, setListPeriod] = useState<CustomerListPeriod>("month");
+  const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
+  const [selected, setSelected] = useState<CustomerRow | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const scopeLabel = periodLabel(listPeriod, periodAnchor);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from(SHOWCASE_TABLES.zakaznici)
-      .select("*")
-      .eq("barbershop_id", barbershopId)
-      .order("visit_count", { ascending: false });
-
+    const [cust, rez] = await Promise.all([
+      supabase
+        .from(SHOWCASE_TABLES.zakaznici)
+        .select("id, email, first_name, last_name, note")
+        .eq("barbershop_id", barbershopId)
+        .order("last_name"),
+      supabase.from(REZERVACE_TABLE).select("*").eq("barbershop_id", barbershopId),
+    ]);
     setLoading(false);
-    if (error) {
-      toast.error("Nepodařilo se načíst zákazníky.", { description: error.message });
+
+    if (cust.error) {
+      toast.error("Nepodařilo se načíst zákazníky.", { description: cust.error.message });
       return;
     }
-    setCustomers((data ?? []) as Customer[]);
+    if (rez.error) {
+      toast.error("Nepodařilo se načíst rezervace.", { description: rez.error.message });
+      return;
+    }
+
+    setCustomers((cust.data ?? []) as CustomerRecord[]);
+    setReservations((rez.data ?? []) as Reservation[]);
   }, [barbershopId]);
 
   useEffect(() => {
     if (ready && authed) void load();
   }, [ready, authed, load]);
 
-  const topCustomers = useMemo(() => customers.slice(0, 5), [customers]);
+  const insights = useMemo(
+    () => buildCustomerInsights(reservations, customers),
+    [reservations, customers],
+  );
 
-  const openCustomer = (c: Customer) => {
-    setSelected(c);
-    setNoteDraft(c.note ?? "");
+  const listRows = useMemo(() => {
+    const filtered = filterCustomersForPeriod(customers, reservations, listPeriod, periodAnchor);
+    const rows: CustomerRow[] = filtered.map((c) => {
+      const email = c.email.trim().toLowerCase();
+      const insight = insights.get(email) ?? {
+        email,
+        completedVisits: 0,
+        canceledCount: 0,
+        note: c.note,
+        nextAppointment: null,
+        isFirstVisit: true,
+        lastCompletedDate: null,
+      };
+      return { ...c, insight };
+    });
+    rows.sort(
+      (a, b) =>
+        completedVisitsInPeriod(reservations, b.email, listPeriod, periodAnchor) -
+        completedVisitsInPeriod(reservations, a.email, listPeriod, periodAnchor),
+    );
+    return rows;
+  }, [customers, reservations, insights, listPeriod, periodAnchor]);
+
+  const topCustomers = useMemo(() => listRows.slice(0, 5), [listRows]);
+
+  const openCustomer = (row: CustomerRow) => {
+    setSelected(row);
+    setNoteDraft(row.note ?? "");
     setDetailOpen(true);
   };
 
@@ -87,7 +159,7 @@ export default function AdminCustomersPage() {
 
     const updated = { ...selected, note };
     setSelected(updated);
-    setCustomers((prev) => prev.map((c) => (c.id === selected.id ? updated : c)));
+    setCustomers((prev) => prev.map((c) => (c.id === selected.id ? { ...c, note } : c)));
     toast.success("Poznámka uložena.");
   };
 
@@ -108,7 +180,7 @@ export default function AdminCustomersPage() {
           <h1 className="font-display text-4xl md:text-5xl">Zákazníci</h1>
           <div className="hairline w-20 mt-4 mb-2" />
           <p className="text-muted-foreground text-sm">
-            {shopName ?? "Salón"} — {customers.length} zákazníků
+            {shopName ?? "Salón"} — {listRows.length} zákazníků v období
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -125,13 +197,44 @@ export default function AdminCustomersPage() {
 
       <AdminNav />
 
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+        <AdminPeriodToggle
+          value={listPeriod}
+          onChange={(p) => {
+            if (p === "week") return;
+            setListPeriod(p);
+            setPeriodAnchor(new Date());
+          }}
+          modes={["month", "year"]}
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setPeriodAnchor((a) => shiftAnchor(listPeriod, a, -1))}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <span className="font-display text-lg capitalize min-w-[160px] text-center">{scopeLabel}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setPeriodAnchor((a) => shiftAnchor(listPeriod, a, 1))}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
       {topCustomers.length > 0 && (
         <div className="grid gap-4 md:grid-cols-3 mb-8">
           <Card className="border-gold/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-normal text-muted-foreground flex items-center gap-2">
                 <Crown className="h-4 w-4 text-gold" />
-                Nejvěrnější zákazník
+                Nejvěrnější — {scopeLabel}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -139,7 +242,13 @@ export default function AdminCustomersPage() {
                 {topCustomers[0].first_name} {topCustomers[0].last_name}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {topCustomers[0].visit_count} návštěv
+                {completedVisitsInPeriod(
+                  reservations,
+                  topCustomers[0].email,
+                  listPeriod,
+                  periodAnchor,
+                )}{" "}
+                proběhlých návštěv
               </p>
             </CardContent>
           </Card>
@@ -155,7 +264,8 @@ export default function AdminCustomersPage() {
                   onClick={() => openCustomer(c)}
                   className="rounded-full border border-border px-3 py-1 text-xs hover:border-gold/50 hover:bg-gold/10 transition-colors"
                 >
-                  {i + 1}. {c.first_name} ({c.visit_count}×)
+                  {i + 1}. {c.first_name} (
+                  {completedVisitsInPeriod(reservations, c.email, listPeriod, periodAnchor)}×)
                 </button>
               ))}
             </CardContent>
@@ -168,45 +278,55 @@ export default function AdminCustomersPage() {
           <div className="flex justify-center py-16">
             <Loader2 className="h-10 w-10 animate-spin text-gold" />
           </div>
-        ) : customers.length === 0 ? (
+        ) : listRows.length === 0 ? (
           <p className="p-8 text-center text-muted-foreground text-sm">
-            Zatím žádní zákazníci — přidají se z rezervací.
+            V tomto období žádné proběhlé návštěvy.
           </p>
         ) : (
           <ul className="divide-y divide-border/60">
-            {customers.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => openCustomer(c)}
-                  className="w-full flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-left hover:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-full bg-gold/15 flex items-center justify-center shrink-0">
-                      <User className="h-5 w-5 text-gold" />
+            {listRows.map((c) => {
+              const inPeriod = completedVisitsInPeriod(
+                reservations,
+                c.email,
+                listPeriod,
+                periodAnchor,
+              );
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => openCustomer(c)}
+                    className="w-full flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-left hover:bg-muted/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-10 w-10 rounded-full bg-gold/15 flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-gold" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">
+                          {c.first_name} {c.last_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          {c.email}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {c.first_name} {c.last_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                        <Mail className="h-3 w-3 shrink-0" />
-                        {c.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-medium">{c.visit_count}× návštěva</p>
-                    {c.last_visit_date && (
+                    <div className="text-right shrink-0 space-y-0.5">
+                      <p className="text-sm font-medium">{inPeriod}× v období</p>
                       <p className="text-xs text-muted-foreground">
-                        naposledy{" "}
-                        {format(parse(c.last_visit_date, "yyyy-MM-dd", new Date()), "d. M. yyyy")}
+                        celkem {c.insight.completedVisits} proběhlých
                       </p>
-                    )}
-                  </div>
-                </button>
-              </li>
-            ))}
+                      {c.insight.canceledCount > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          {c.insight.canceledCount}× zrušeno
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -224,18 +344,63 @@ export default function AdminCustomersPage() {
                 <p className="text-muted-foreground">{selected.email}</p>
                 <div className="rounded-lg border border-gold/30 bg-gold/5 px-4 py-3">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-                    Počet návštěv
+                    Proběhlé návštěvy
                   </p>
-                  <p className="font-display text-3xl text-foreground">{selected.visit_count}</p>
-                  {selected.first_visit_date && (
+                  <p className="font-display text-3xl text-foreground">
+                    {selected.insight.completedVisits}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    V období {scopeLabel}:{" "}
+                    {completedVisitsInPeriod(
+                      reservations,
+                      selected.email,
+                      listPeriod,
+                      periodAnchor,
+                    )}
+                  </p>
+                  {selected.insight.lastCompletedDate && (
                     <p className="text-xs text-muted-foreground mt-2">
-                      První návštěva:{" "}
-                      {format(parse(selected.first_visit_date, "yyyy-MM-dd", new Date()), "d. M. yyyy", {
-                        locale: cs,
-                      })}
+                      Naposledy:{" "}
+                      {format(
+                        parse(selected.insight.lastCompletedDate, "yyyy-MM-dd", new Date()),
+                        "d. M. yyyy",
+                        { locale: cs },
+                      )}
                     </p>
                   )}
                 </div>
+                {selected.insight.canceledCount > 0 && (
+                  <p className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    Zrušených rezervací: {selected.insight.canceledCount}
+                  </p>
+                )}
+                {selected.insight.nextAppointment ? (
+                  <p className="flex items-start gap-2 rounded-md border border-border/80 bg-muted/20 px-3 py-2">
+                    <CalendarClock className="h-4 w-4 text-gold shrink-0 mt-0.5" />
+                    <span>
+                      Další termín:{" "}
+                      <strong>
+                        {format(
+                          parse(
+                            selected.insight.nextAppointment.booking_date,
+                            "yyyy-MM-dd",
+                            new Date(),
+                          ),
+                          "d. M. yyyy",
+                          { locale: cs },
+                        )}{" "}
+                        {selected.insight.nextAppointment.booking_time}
+                      </strong>
+                      <br />
+                      <span className="text-muted-foreground">
+                        {selected.insight.nextAppointment.service}
+                      </span>
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">Žádná budoucí rezervace.</p>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="customer-note">Poznámka</Label>
                   <Textarea

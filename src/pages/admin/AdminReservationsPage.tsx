@@ -144,6 +144,7 @@ export default function AdminReservationsPage() {
         {calendarView === "month" ? (
           <AdminMonthCalendar
             rows={rows}
+            barbershopId={barbershopId}
             loading={loadingList}
             readOnly={readOnly}
             onDelete={(id) => void deleteReservation(id)}
@@ -151,6 +152,7 @@ export default function AdminReservationsPage() {
         ) : (
           <AdminWeekCalendar
             rows={rows}
+            barbershopId={barbershopId}
             loading={loadingList}
             readOnly={readOnly}
             onDelete={(id) => void deleteReservation(id)}

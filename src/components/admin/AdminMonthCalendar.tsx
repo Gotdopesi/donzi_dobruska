@@ -30,6 +30,7 @@ const WEEKDAYS = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
 
 type Props = {
   rows: Reservation[];
+  barbershopId: number;
   loading?: boolean;
   readOnly?: boolean;
   onDelete?: (id: string) => void;
@@ -49,7 +50,7 @@ function countByDate(rows: Reservation[]) {
   return map;
 }
 
-export function AdminMonthCalendar({ rows, loading, readOnly, onDelete }: Props) {
+export function AdminMonthCalendar({ rows, barbershopId, loading, readOnly, onDelete }: Props) {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -163,7 +164,12 @@ export function AdminMonthCalendar({ rows, loading, readOnly, onDelete }: Props)
           <DialogHeader>
             <DialogTitle className="font-display text-xl capitalize">{selectedLabel}</DialogTitle>
           </DialogHeader>
-          <AdminReservationDetailList rows={selectedRows} readOnly={readOnly} onDelete={onDelete} />
+          <AdminReservationDetailList
+            rows={selectedRows}
+            barbershopId={barbershopId}
+            readOnly={readOnly}
+            onDelete={onDelete}
+          />
         </DialogContent>
       </Dialog>
     </div>
@@ -191,7 +197,12 @@ function DayDetailPanel({
           <X className="h-4 w-4" />
         </Button>
       </div>
-      <AdminReservationDetailList rows={rows} readOnly={readOnly} onDelete={onDelete} />
+      <AdminReservationDetailList
+        rows={rows}
+        barbershopId={barbershopId}
+        readOnly={readOnly}
+        onDelete={onDelete}
+      />
     </div>
   );
 }

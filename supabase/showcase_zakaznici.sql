@@ -60,23 +60,38 @@ BEGIN
       COALESCE(NULLIF(trim(NEW.first_name), ''), '—'),
       COALESCE(NULLIF(trim(NEW.last_name), ''), ''),
       NULLIF(trim(COALESCE(NEW.note, '')), ''),
-      1,
-      NEW.booking_date,
-      NEW.booking_date,
+      CASE WHEN NEW.booking_date <= CURRENT_DATE THEN 1 ELSE 0 END,
+      CASE WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date ELSE NULL END,
+      CASE WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date ELSE NULL END,
       now()
     )
     ON CONFLICT (barbershop_id, email) DO UPDATE SET
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
       note = COALESCE(EXCLUDED.note, showcase_zakaznici.note),
-      visit_count = showcase_zakaznici.visit_count + 1,
-      last_visit_date = EXCLUDED.last_visit_date,
-      first_visit_date = COALESCE(showcase_zakaznici.first_visit_date, EXCLUDED.first_visit_date),
+      visit_count = showcase_zakaznici.visit_count
+        + CASE WHEN NEW.booking_date <= CURRENT_DATE THEN 1 ELSE 0 END,
+      last_visit_date = CASE
+        WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date
+        ELSE showcase_zakaznici.last_visit_date
+      END,
+      first_visit_date = COALESCE(
+        showcase_zakaznici.first_visit_date,
+        CASE WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date ELSE NULL END
+      ),
       updated_at = now();
   ELSIF TG_OP = 'UPDATE' AND OLD.status = 'canceled' AND NEW.status IS DISTINCT FROM 'canceled' THEN
     UPDATE public.showcase_zakaznici SET
-      visit_count = visit_count + 1,
-      last_visit_date = NEW.booking_date,
+      visit_count = visit_count
+        + CASE WHEN NEW.booking_date <= CURRENT_DATE THEN 1 ELSE 0 END,
+      last_visit_date = CASE
+        WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date
+        ELSE last_visit_date
+      END,
+      first_visit_date = COALESCE(
+        first_visit_date,
+        CASE WHEN NEW.booking_date <= CURRENT_DATE THEN NEW.booking_date ELSE NULL END
+      ),
       updated_at = now()
     WHERE barbershop_id = NEW.barbershop_id AND email = v_email;
   END IF;
@@ -102,9 +117,9 @@ SELECT
   (array_agg(r.first_name ORDER BY r.booking_date DESC, r.booking_time DESC))[1] AS first_name,
   COALESCE((array_agg(r.last_name ORDER BY r.booking_date DESC, r.booking_time DESC))[1], '') AS last_name,
   (array_agg(r.note ORDER BY r.booking_date DESC) FILTER (WHERE r.note IS NOT NULL AND trim(r.note) <> ''))[1] AS note,
-  COUNT(*)::INT AS visit_count,
-  MIN(r.booking_date) AS first_visit_date,
-  MAX(r.booking_date) AS last_visit_date
+  COUNT(*) FILTER (WHERE r.booking_date <= CURRENT_DATE)::INT AS visit_count,
+  MIN(r.booking_date) FILTER (WHERE r.booking_date <= CURRENT_DATE) AS first_visit_date,
+  MAX(r.booking_date) FILTER (WHERE r.booking_date <= CURRENT_DATE) AS last_visit_date
 FROM public.showcase_rezervace r
 WHERE r.barbershop_id IS NOT NULL
   AND r.email IS NOT NULL
@@ -132,3 +147,23 @@ CREATE POLICY "admin_update_showcase_zakaznici"
   ON public.showcase_zakaznici FOR UPDATE TO authenticated
   USING (barbershop_id = public.showcase_current_barbershop_id())
   WITH CHECK (barbershop_id = public.showcase_current_barbershop_id());
+
+-- Přepočet návštěv — jen proběhlé termíny (booking_date <= dnes)
+UPDATE public.showcase_zakaznici z
+SET
+  visit_count = c.cnt,
+  first_visit_date = c.first_d,
+  last_visit_date = c.last_d,
+  updated_at = now()
+FROM (
+  SELECT
+    r.barbershop_id,
+    lower(trim(r.email)) AS email,
+    COUNT(*) FILTER (WHERE COALESCE(r.status, '') <> 'canceled' AND r.booking_date <= CURRENT_DATE)::INT AS cnt,
+    MIN(r.booking_date) FILTER (WHERE COALESCE(r.status, '') <> 'canceled' AND r.booking_date <= CURRENT_DATE) AS first_d,
+    MAX(r.booking_date) FILTER (WHERE COALESCE(r.status, '') <> 'canceled' AND r.booking_date <= CURRENT_DATE) AS last_d
+  FROM public.showcase_rezervace r
+  WHERE r.email IS NOT NULL AND trim(r.email) <> ''
+  GROUP BY r.barbershop_id, lower(trim(r.email))
+) c
+WHERE z.barbershop_id = c.barbershop_id AND z.email = c.email;

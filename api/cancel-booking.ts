@@ -217,10 +217,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const { error: delErr } = await supabase.from(found.table).delete().eq("id", parsed.id);
-    if (delErr) {
-      console.error("[cancel-booking] delete", delErr);
-      return res.status(500).json({ error: delErr.message });
+    const { error: cancelErr } = await supabase
+      .from(found.table)
+      .update({ status: "canceled" })
+      .eq("id", parsed.id);
+
+    if (cancelErr) {
+      console.error("[cancel-booking] cancel", cancelErr);
+      return res.status(500).json({ error: cancelErr.message });
     }
 
     return res.status(200).json({ ok: true, canceled: true, ...summary });

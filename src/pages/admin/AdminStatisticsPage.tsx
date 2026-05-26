@@ -16,7 +16,12 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { REZERVACE_TABLE } from "@/lib/rezervace";
 import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
-import { displayAmounts, showPlannedColumn } from "@/lib/admin-revenue-display";
+import { displayAmounts } from "@/lib/admin-revenue-display";
+import {
+  aggregateRevenueFromReservations,
+  buildRevenueChartFromReservations,
+  mergeRevenueTotals,
+} from "@/lib/admin-revenue-from-reservations";
 import {
   aggregateVydelkyInScope,
   buildPerformanceSeries,
@@ -38,7 +43,6 @@ import { AdminViewToggle } from "@/components/admin/AdminViewToggle";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
 import { CHART_BAR_FILL } from "@/lib/chart-colors";
-import { periodAnchorStart } from "@/lib/admin-statistics-period";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -115,14 +119,7 @@ export default function AdminStatisticsPage() {
 
   const scopeLabel = periodScopeLabel(statsPeriod, periodAnchor);
   const monthKey = primaryMonthKey(statsPeriod, periodAnchor);
-  const scopeYear = periodAnchorStart("year", periodAnchor).getFullYear();
-  const currentYear = new Date().getFullYear();
-  const showPlanned =
-    statsPeriod === "week"
-      ? false
-      : statsPeriod === "year"
-        ? scopeYear >= currentYear
-        : showPlannedColumn(monthKey);
+  const showPlanned = statsPeriod !== "week";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,7 +150,9 @@ export default function AdminStatisticsPage() {
           .order("name"),
         supabase
           .from(REZERVACE_TABLE)
-          .select("id, booking_date, booking_time, status, sms_sent, email, service")
+          .select(
+            "id, booking_date, booking_time, status, sms_sent, email, service, total_price, service_id",
+          )
           .eq("barbershop_id", barbershopId),
       ]);
 
@@ -218,10 +217,17 @@ export default function AdminStatisticsPage() {
     [reservations, statsPeriod, periodAnchor],
   );
 
-  const current = useMemo(
-    () => displayAmounts(aggregateVydelkyInScope(vydelkyRows, statsPeriod, periodAnchor)),
-    [vydelkyRows, statsPeriod, periodAnchor],
-  );
+  const current = useMemo(() => {
+    const fromDb = displayAmounts(
+      aggregateVydelkyInScope(vydelkyRows, statsPeriod, periodAnchor),
+    );
+    const fromRez = aggregateRevenueFromReservations(
+      reservations,
+      statsPeriod,
+      periodAnchor,
+    );
+    return mergeRevenueTotals(fromDb, fromRez);
+  }, [vydelkyRows, reservations, statsPeriod, periodAnchor]);
 
   const canceledCount = useMemo(
     () => scopedReservations.filter((r) => r.status === "canceled").length,
@@ -244,7 +250,17 @@ export default function AdminStatisticsPage() {
     if (statsPeriod === "week") {
       return buildWeekActivityChart(reservations, statsPeriod, periodAnchor);
     }
-    return buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
+    const fromDb = buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
+    const fromRez = buildRevenueChartFromReservations(
+      reservations,
+      statsPeriod,
+      periodAnchor,
+    );
+    const dbSum = fromDb.reduce((s, p) => s + p.earned + p.planned, 0);
+    const rezSum = fromRez.reduce((s, p) => s + p.earned + p.planned, 0);
+    if (dbSum > 0) return fromDb;
+    if (rezSum > 0) return fromRez;
+    return fromDb;
   }, [reservations, vydelkyRows, statsPeriod, periodAnchor]);
 
   const performanceTitle =

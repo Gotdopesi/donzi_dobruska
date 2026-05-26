@@ -19,14 +19,16 @@ import { SHOWCASE_TABLES } from "@/lib/showcase-tables";
 import { displayAmounts } from "@/lib/admin-revenue-display";
 import {
   aggregateRevenueFromReservations,
+  buildPriceResolver,
   buildRevenueChartFromReservations,
+  formatRevenueAxisTick,
+  mergeRevenueChartSeries,
   mergeRevenueTotals,
 } from "@/lib/admin-revenue-from-reservations";
 import {
   aggregateVydelkyInScope,
   buildPerformanceSeries,
   buildRevenueChartSeries,
-  buildWeekActivityChart,
   monthKeysInScope,
   periodScopeLabel,
   primaryMonthKey,
@@ -217,6 +219,8 @@ export default function AdminStatisticsPage() {
     [reservations, statsPeriod, periodAnchor],
   );
 
+  const priceOf = useMemo(() => buildPriceResolver(catalog), [catalog]);
+
   const current = useMemo(() => {
     const fromDb = displayAmounts(
       aggregateVydelkyInScope(vydelkyRows, statsPeriod, periodAnchor),
@@ -225,9 +229,10 @@ export default function AdminStatisticsPage() {
       reservations,
       statsPeriod,
       periodAnchor,
+      priceOf,
     );
     return mergeRevenueTotals(fromDb, fromRez);
-  }, [vydelkyRows, reservations, statsPeriod, periodAnchor]);
+  }, [vydelkyRows, reservations, statsPeriod, periodAnchor, priceOf]);
 
   const canceledCount = useMemo(
     () => scopedReservations.filter((r) => r.status === "canceled").length,
@@ -247,21 +252,21 @@ export default function AdminStatisticsPage() {
   const maxPerformance = Math.max(...performance.map((p) => p.count), 1);
 
   const revenueChartData = useMemo(() => {
-    if (statsPeriod === "week") {
-      return buildWeekActivityChart(reservations, statsPeriod, periodAnchor);
-    }
+    if (statsPeriod === "week") return [];
     const fromDb = buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
     const fromRez = buildRevenueChartFromReservations(
       reservations,
       statsPeriod,
       periodAnchor,
+      priceOf,
     );
-    const dbSum = fromDb.reduce((s, p) => s + p.earned + p.planned, 0);
-    const rezSum = fromRez.reduce((s, p) => s + p.earned + p.planned, 0);
-    if (dbSum > 0) return fromDb;
-    if (rezSum > 0) return fromRez;
-    return fromDb;
-  }, [reservations, vydelkyRows, statsPeriod, periodAnchor]);
+    return mergeRevenueChartSeries(fromDb, fromRez);
+  }, [reservations, vydelkyRows, statsPeriod, periodAnchor, priceOf]);
+
+  const revenueChartSum = useMemo(
+    () => revenueChartData.reduce((s, p) => s + p.earned + p.planned, 0),
+    [revenueChartData],
+  );
 
   const performanceTitle =
     statsPeriod === "week"
@@ -271,11 +276,7 @@ export default function AdminStatisticsPage() {
         : "Výkonost měsíce";
 
   const revenueChartTitle =
-    statsPeriod === "week"
-      ? "Rezervace v týdnu"
-      : statsPeriod === "year"
-        ? "Tržby v roce"
-        : "Tržby (12 měsíců)";
+    statsPeriod === "year" ? "Tržby v roce" : "Tržby (12 měsíců)";
 
   const weekChartConfig = {
     count: { label: "Rezervace", color: CHART_BAR_FILL },
@@ -297,10 +298,7 @@ export default function AdminStatisticsPage() {
 
   const revenueChartConfig = {
     earned: { label: "Vyděláno", color: CHART_BAR_FILL },
-    planned: {
-      label: statsPeriod === "week" ? "Rezervace" : "V plánu",
-      color: CHART_BAR_FILL,
-    },
+    planned: { label: "V plánu", color: CHART_BAR_FILL },
   } as const;
 
   if (!ready || !authed) {
@@ -576,43 +574,47 @@ export default function AdminStatisticsPage() {
           ))}
       </section>
 
-      {viewMode === "chart" && revenueChartData.length > 0 && (
+      {viewMode === "chart" && statsPeriod !== "week" && (
         <section className="mb-10">
           <h2 className="font-display text-2xl mb-4">{revenueChartTitle}</h2>
-          <ChartContainer config={revenueChartConfig} className="h-[300px] w-full">
-            <BarChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                width={48}
-                tickFormatter={(v) =>
-                  statsPeriod === "week" ? String(v) : `${Math.round(Number(v) / 1000)}k`
-                }
-              />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    formatter={(value, name) =>
-                      statsPeriod === "week"
-                        ? [`${value} rezervací`, name === "planned" ? "Počet" : String(name)]
-                        : formatCurrency(Number(value))
-                    }
-                  />
-                }
-              />
-              {statsPeriod === "week" ? (
-                <Bar dataKey="planned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
-              ) : (
-                <>
-                  <Bar dataKey="earned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="planned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
-                  <Legend />
-                </>
-              )}
-            </BarChart>
-          </ChartContainer>
+          {revenueChartSum === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              V tomto období zatím nejsou žádné tržby k zobrazení.
+            </p>
+          ) : (
+            <ChartContainer config={revenueChartConfig} className="h-[300px] w-full">
+              <BarChart
+                data={revenueChartData}
+                margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
+                barCategoryGap="18%"
+                barGap={4}
+              >
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={52}
+                  tickFormatter={formatRevenueAxisTick}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value) => formatCurrency(Number(value))}
+                    />
+                  }
+                />
+                <Bar dataKey="earned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="planned"
+                  fill={CHART_BAR_FILL}
+                  fillOpacity={0.45}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Legend />
+              </BarChart>
+            </ChartContainer>
+          )}
         </section>
       )}
 

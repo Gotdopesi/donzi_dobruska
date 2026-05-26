@@ -36,8 +36,8 @@ import { AdminPeriodToggle } from "@/components/admin/AdminPeriodToggle";
 import { AdminRevenueDetailDialog } from "@/components/admin/AdminRevenueDetailDialog";
 import { AdminViewToggle } from "@/components/admin/AdminViewToggle";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, Cell, Legend, XAxis, YAxis } from "recharts";
-import { CHART_EARNED_COLOR, CHART_PLANNED_COLOR, chartBarColor } from "@/lib/chart-colors";
+import { Bar, BarChart, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
+import { CHART_BAR_FILL } from "@/lib/chart-colors";
 import { periodAnchorStart } from "@/lib/admin-statistics-period";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -262,8 +262,8 @@ export default function AdminStatisticsPage() {
         : "Tržby (12 měsíců)";
 
   const weekChartConfig = {
-    count: { label: "Rezervace", color: "hsl(var(--gold))" },
-    planned: { label: "Počet", color: "hsl(var(--gold))" },
+    count: { label: "Rezervace", color: CHART_BAR_FILL },
+    planned: { label: "Počet", color: CHART_BAR_FILL },
   } as const;
 
   const serviceChartData = useMemo(
@@ -275,15 +275,15 @@ export default function AdminStatisticsPage() {
     [serviceStats],
   );
 
-  const serviceChartConfig = Object.fromEntries(
-    serviceChartData.map((row, i) => [row.name, { label: row.name, color: chartBarColor(i) }]),
-  ) as Record<string, { label: string; color: string }>;
+  const serviceChartConfig = {
+    count: { label: "Počet", color: CHART_BAR_FILL },
+  } as const;
 
   const revenueChartConfig = {
-    earned: { label: "Vyděláno", color: CHART_EARNED_COLOR },
+    earned: { label: "Vyděláno", color: CHART_BAR_FILL },
     planned: {
       label: statsPeriod === "week" ? "Rezervace" : "V plánu",
-      color: CHART_PLANNED_COLOR,
+      color: CHART_BAR_FILL,
     },
   } as const;
 
@@ -420,7 +420,7 @@ export default function AdminStatisticsPage() {
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="count" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ChartContainer>
         ) : (
@@ -524,11 +524,7 @@ export default function AdminStatisticsPage() {
                   tickMargin={4}
                 />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                  {serviceChartData.map((row, i) => (
-                    <Cell key={row.name} fill={chartBarColor(i)} />
-                  ))}
-                </Bar>
+                <Bar dataKey="count" fill={CHART_BAR_FILL} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ChartContainer>
           ) : (
@@ -591,11 +587,11 @@ export default function AdminStatisticsPage() {
                 }
               />
               {statsPeriod === "week" ? (
-                <Bar dataKey="planned" fill={CHART_PLANNED_COLOR} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="planned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
               ) : (
                 <>
-                  <Bar dataKey="earned" fill={CHART_EARNED_COLOR} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="planned" fill={CHART_PLANNED_COLOR} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="earned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="planned" fill={CHART_BAR_FILL} radius={[4, 4, 0, 0]} />
                   <Legend />
                 </>
               )}

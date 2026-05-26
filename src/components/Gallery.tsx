@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import useEmblaCarousel from "embla-carousel-react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import galerie1 from "@/assets/galerie_1.webp";
 import galerie2 from "@/assets/galeri_2.webp";
 import galerie3 from "@/assets/galerie_3.webp";
 import galerie4 from "@/assets/galerie_4.webp";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type Item = { src: string; alt: string };
 
@@ -16,6 +19,28 @@ const ITEMS: Item[] = [
 
 export function Gallery() {
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: "center",
+    loop: true,
+    dragFree: false,
+    containScroll: "trimSnaps",
+  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    const onSelect = () => setSelectedIndex(emblaApi.selectedScrollSnap());
+    onSelect();
+    emblaApi.on("select", onSelect);
+    emblaApi.on("reInit", onSelect);
+    return () => {
+      emblaApi.off("select", onSelect);
+      emblaApi.off("reInit", onSelect);
+    };
+  }, [emblaApi]);
 
   useEffect(() => {
     if (lightbox === null) return;
@@ -40,42 +65,95 @@ export function Gallery() {
         <div className="text-center max-w-2xl mx-auto mb-12">
           <div className="flex items-center justify-center gap-3 mb-5">
             <span className="h-px w-10 bg-gold" />
-            <span className="text-xs uppercase tracking-[0.4em] text-gold">
-              Lookbook
-            </span>
+            <span className="text-xs uppercase tracking-[0.4em] text-gold">Lookbook</span>
             <span className="h-px w-10 bg-gold" />
           </div>
           <h2 className="font-display text-4xl md:text-5xl text-foreground">
             <span className="gold-text-gradient">Galerie</span> řemesla
           </h2>
           <p className="mt-5 text-muted-foreground">
-            Pohled do našeho světa — od precizních střihů po atmosféru, kterou
-            u nás zažijete.
+            Pohled do našeho světa — posuňte doleva nebo doprava, nebo klepněte na fotku.
           </p>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-8 md:gap-12">
-          {ITEMS.map((item, i) => (
-            <button
-              key={item.src}
-              type="button"
-              onClick={() => setLightbox(i)}
-              className="group flex flex-col items-center gap-4 focus:outline-none"
-            >
-              <div className="relative w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-full overflow-hidden border-4 border-border group-hover:border-gold transition-all duration-500 group-hover:scale-105 shadow-luxe">
-                <img
-                  src={item.src}
-                  alt={item.alt}
-                  loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                />
-                <div className="absolute inset-0 bg-gold/0 group-hover:bg-gold/10 transition-colors" />
-              </div>
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground group-hover:text-gold transition-colors">
-                {item.alt}
-              </span>
-            </button>
-          ))}
+        <div className="relative max-w-4xl mx-auto">
+          <div className="overflow-hidden touch-pan-y" ref={emblaRef}>
+            <div className="flex">
+              {ITEMS.map((item, i) => (
+                <div
+                  key={item.src}
+                  className="min-w-0 flex-[0_0_100%] sm:flex-[0_0_70%] md:flex-[0_0_55%] px-4 sm:px-6"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setLightbox(i)}
+                    className="group flex flex-col items-center gap-4 w-full focus:outline-none mx-auto"
+                  >
+                    <div
+                      className={cn(
+                        "relative w-56 h-56 sm:w-64 sm:h-64 md:w-72 md:h-72 rounded-full overflow-hidden border-4 transition-all duration-500 shadow-luxe",
+                        selectedIndex === i
+                          ? "border-gold scale-105"
+                          : "border-border opacity-80 scale-95 group-hover:border-gold/70",
+                      )}
+                    >
+                      <img
+                        src={item.src}
+                        alt={item.alt}
+                        loading="lazy"
+                        draggable={false}
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
+                    </div>
+                    <span
+                      className={cn(
+                        "text-[10px] uppercase tracking-widest transition-colors",
+                        selectedIndex === i ? "text-gold" : "text-muted-foreground",
+                      )}
+                    >
+                      {item.alt}
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 hidden sm:flex border-gold/40 hover:border-gold"
+            onClick={scrollPrev}
+            aria-label="Předchozí fotka"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 hidden sm:flex border-gold/40 hover:border-gold"
+            onClick={scrollNext}
+            aria-label="Další fotka"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+
+          <div className="flex justify-center gap-2 mt-8">
+            {ITEMS.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => emblaApi?.scrollTo(i)}
+                className={cn(
+                  "h-2 rounded-full transition-all",
+                  selectedIndex === i ? "w-6 bg-gold" : "w-2 bg-muted-foreground/40",
+                )}
+                aria-label={`Fotka ${i + 1}`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

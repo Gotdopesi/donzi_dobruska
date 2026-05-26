@@ -13,7 +13,7 @@ import {
   subMonths,
 } from "date-fns";
 import { cs } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AdminReservationDetailList } from "@/components/admin/AdminReservationDetailList";
 import { Button } from "@/components/ui/button";
 import {
@@ -149,17 +149,13 @@ export function AdminMonthCalendar({ rows, barbershopId, loading, readOnly, onDe
         })}
       </div>
 
-      {selectedKey && !modalOpen && (
-        <DayDetailPanel
-          label={selectedLabel}
-          rows={selectedRows}
-          readOnly={readOnly}
-          onDelete={onDelete}
-          onClose={() => setSelectedKey(null)}
-        />
-      )}
-
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          setModalOpen(open);
+          if (!open) setSelectedKey(null);
+        }}
+      >
         <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-xl capitalize">{selectedLabel}</DialogTitle>
@@ -176,33 +172,3 @@ export function AdminMonthCalendar({ rows, barbershopId, loading, readOnly, onDe
   );
 }
 
-function DayDetailPanel({
-  label,
-  rows,
-  readOnly,
-  onDelete,
-  onClose,
-}: {
-  label: string;
-  rows: Reservation[];
-  readOnly?: boolean;
-  onDelete?: (id: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card/80 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-display text-lg capitalize">{label}</h3>
-        <Button type="button" variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-      <AdminReservationDetailList
-        rows={rows}
-        barbershopId={barbershopId}
-        readOnly={readOnly}
-        onDelete={onDelete}
-      />
-    </div>
-  );
-}

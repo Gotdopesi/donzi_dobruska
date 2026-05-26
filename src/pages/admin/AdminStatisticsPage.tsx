@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Loader2,
   LogOut,
-  MessageSquare,
   RefreshCw,
   Scissors,
   TrendingUp,
@@ -153,7 +152,7 @@ export default function AdminStatisticsPage() {
         supabase
           .from(REZERVACE_TABLE)
           .select(
-            "id, booking_date, booking_time, status, sms_sent, email, service, total_price, service_id",
+            "id, booking_date, booking_time, status, email, service, total_price, service_id",
           )
           .eq("barbershop_id", barbershopId),
       ]);
@@ -236,11 +235,6 @@ export default function AdminStatisticsPage() {
 
   const canceledCount = useMemo(
     () => scopedReservations.filter((r) => r.status === "canceled").length,
-    [scopedReservations],
-  );
-
-  const smsSentCount = useMemo(
-    () => scopedReservations.filter((r) => r.sms_sent === true).length,
     [scopedReservations],
   );
 
@@ -472,32 +466,18 @@ export default function AdminStatisticsPage() {
         )}
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 mb-10">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-normal text-muted-foreground flex items-center gap-2">
-              <XCircle className="h-4 w-4" />
-              Zrušené rezervace
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-3xl">{canceledCount}</p>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">za {scopeLabel}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-normal text-muted-foreground flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Odeslané SMS
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-3xl">{smsSentCount}</p>
-            <p className="text-xs text-muted-foreground mt-1 capitalize">za {scopeLabel}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="mb-10 max-w-md">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-normal text-muted-foreground flex items-center gap-2">
+            <XCircle className="h-4 w-4" />
+            Zrušené rezervace
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="font-display text-3xl">{canceledCount}</p>
+          <p className="text-xs text-muted-foreground mt-1 capitalize">za {scopeLabel}</p>
+        </CardContent>
+      </Card>
 
       <section id="sluzby" className="mb-10">
         <h2 className="font-display text-2xl mb-4 flex items-center gap-2">

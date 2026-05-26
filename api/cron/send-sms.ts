@@ -7,6 +7,10 @@ const REZERVACE_TABLE =
   (process.env.SUPABASE_REZERVACE_TABLE ?? process.env.VITE_SUPABASE_REZERVACE_TABLE ?? "showcase_rezervace").trim();
 const BARBERSHOP_TABLE =
   (process.env.SUPABASE_BARBERSHOP_TABLE ?? "showcase_barbershops").trim();
+const SMS_VYUCTOVANI_TABLE =
+  (process.env.SUPABASE_SMS_VYUCTOVANI_TABLE ?? "showcase_sms_vyuctovani").trim();
+const DEFAULT_SMS_UNIT_COST = 1;
+const DEFAULT_SMS_BILLING_MULTIPLIER = 1.6;
 
 type RezervaceRow = {
   id: string;
@@ -20,8 +24,21 @@ type RezervaceRow = {
     name: string;
     credit_balance: number;
     sms_price: number;
+    sms_unit_cost: number;
+    sms_billing_multiplier: number;
   } | null;
 };
+
+function smsBillingAmount(shop: NonNullable<RezervaceRow["shop"]>): {
+  unitCost: number;
+  multiplier: number;
+  amount: number;
+} {
+  const unitCost = Number(shop.sms_unit_cost) || DEFAULT_SMS_UNIT_COST;
+  const multiplier = Number(shop.sms_billing_multiplier) || DEFAULT_SMS_BILLING_MULTIPLIER;
+  const amount = Math.round(unitCost * multiplier * 100) / 100;
+  return { unitCost, multiplier, amount };
+}
 
 function requireEnv(name: string): string {
   const v = process.env[name]?.trim();
@@ -105,8 +122,10 @@ async function loadPendingRows(supabase: SupabaseClient): Promise<{
   error?: string;
   tableUsed: string;
 }> {
-  const embedLegacy = "barbershops ( id, name, credit_balance, sms_price )";
-  const embedShowcase = "showcase_barbershops ( id, name, credit_balance, sms_price )";
+  const embedLegacy =
+    "barbershops ( id, name, credit_balance, sms_price, sms_unit_cost, sms_billing_multiplier )";
+  const embedShowcase =
+    "showcase_barbershops ( id, name, credit_balance, sms_price, sms_unit_cost, sms_billing_multiplier )";
   const tablesToTry = [...new Set([REZERVACE_TABLE, "showcase_rezervace", "rezervace"])];
 
   for (const table of tablesToTry) {
@@ -201,12 +220,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requireEnv("BULKGATE_APP_TOKEN");
     }
 
-    const barbershopTableForUpdate = tableUsed.startsWith("showcase_")
-      ? BARBERSHOP_TABLE.startsWith("showcase_")
-        ? BARBERSHOP_TABLE
-        : "showcase_barbershops"
-      : "barbershops";
-
     for (const row of pending) {
       const at = parseAppointmentPrague(row.booking_date, row.booking_time);
       if (at < windowStart || at > windowEnd) {
@@ -221,15 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      const credit = Number(shop.credit_balance);
-      const price = Number(shop.sms_price);
-      if (credit < price) {
-        log.push(
-          `[warn] ${row.id}: nedostatek kreditu v DB u ${shop.name} (${credit} < ${price}) — SMS preskocena`,
-        );
-        skipped++;
-        continue;
-      }
+      const { unitCost, multiplier, amount: billedAmount } = smsBillingAmount(shop);
 
       const number = normalizePhoneForBulkGate(row.phone);
       if (!number) {
@@ -262,7 +267,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           unicode: false,
           country: "cz",
           sender_id: "gText",
-          sender_id_value: "s-elegance",
+          sender_id_value: "Donzi",
         }),
       });
 
@@ -282,14 +287,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      const newBalance = Math.round((credit - price) * 100) / 100;
-      const { error: creditErr } = await supabase
-        .from(barbershopTableForUpdate)
-        .update({ credit_balance: newBalance })
-        .eq("id", shop.id);
+      const { error: ledgerErr } = await supabase.from(SMS_VYUCTOVANI_TABLE).insert({
+        barbershop_id: shop.id,
+        rezervace_id: row.id,
+        phone: row.phone,
+        unit_cost: unitCost,
+        billing_multiplier: multiplier,
+        amount: billedAmount,
+      });
 
-      if (creditErr) {
-        log.push(`[fail] ${row.id}: update credit ${creditErr.message}`);
+      if (ledgerErr) {
+        log.push(`[fail] ${row.id}: sms vyuctovani ${ledgerErr.message}`);
         failed++;
         continue;
       }
@@ -305,7 +313,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      log.push(`[ok] ${row.id}: SMS na ${number}, kredit DB ${newBalance}`);
+      log.push(`[ok] ${row.id}: SMS na ${number}, vyuctovani ${billedAmount} Kc`);
       sent++;
     }
 

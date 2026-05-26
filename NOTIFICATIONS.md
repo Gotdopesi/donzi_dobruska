@@ -32,7 +32,7 @@ Lokálně: zkopíruj `.env.example` → `.env.local` (soubor je v `.gitignore`).
 |--------|----------------|
 | Potvrzovací e-mail po rezervaci | `POST /api/send-booking-email` — volá `BookingDialog` po uložení |
 | SMS 24 h předem (1×/hod) | `GET https://váš-web.vercel.app/api/cron/send-sms` — volá **cron-job.org** (Hobby Vercel nemá vlastní crony) |
-| Konto + varování kreditu | `src/components/admin/AdminCreditBanner.tsx` v `/admin` |
+| Vyúčtování SMS (DB) | `showcase_sms_vyuctovani`: `amount` = `sms_unit_cost × sms_billing_multiplier` per salón |
 
 ## 4. Ověření
 

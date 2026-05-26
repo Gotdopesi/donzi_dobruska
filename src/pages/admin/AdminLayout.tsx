@@ -1,5 +1,4 @@
 import { AppLink } from "@/lib/router";
-import { AdminCreditBanner } from "@/components/admin/AdminCreditBanner";
 import { AdminBarbershopProvider } from "@/lib/use-admin-barbershop";
 import { Scissors } from "lucide-react";
 
@@ -26,7 +25,6 @@ function AdminShellInner({ children }: { children: React.ReactNode }) {
           </AppLink>
         </div>
       </header>
-      <AdminCreditBanner />
       <main className="max-w-7xl mx-auto px-6 py-10">{children}</main>
     </div>
   );

@@ -49,7 +49,7 @@ export function Navbar({ onReserve }: NavbarProps) {
           </span>
         </a>
 
-        <nav className="hidden md:flex items-center gap-10">
+        <nav className="hidden xl:flex items-center gap-8 2xl:gap-10 shrink-0">
           {links.map((l) => (
             <a
               key={l.href}
@@ -65,12 +65,12 @@ export function Navbar({ onReserve }: NavbarProps) {
         <div className="flex items-center gap-3">
           <button
             onClick={onReserve}
-            className="hidden md:inline-flex items-center gap-2 gold-gradient text-gold-foreground font-semibold px-6 py-2.5 rounded-sm uppercase tracking-wider text-xs shadow-gold hover:scale-105 transition-transform"
+            className="hidden xl:inline-flex items-center gap-2 gold-gradient text-gold-foreground font-semibold px-6 py-2.5 rounded-sm uppercase tracking-wider text-xs shadow-gold hover:scale-105 transition-transform shrink-0"
           >
             Rezervovat termín
           </button>
           <button
-            className="md:hidden text-foreground p-2"
+            className="xl:hidden text-foreground p-2"
             onClick={() => setOpen(!open)}
             aria-label="Menu"
           >
@@ -80,7 +80,7 @@ export function Navbar({ onReserve }: NavbarProps) {
       </div>
 
       {open && (
-        <div className="md:hidden glass border-t border-border/30 mt-3 animate-fade-in">
+        <div className="xl:hidden glass border-t border-border/30 mt-3 animate-fade-in">
           <nav className="flex flex-col p-6 gap-5">
             {links.map((l) => (
               <a

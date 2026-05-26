@@ -1,4 +1,4 @@
-import { addMonths, format, startOfMonth, startOfYear, subMonths } from "date-fns";
+import { addMonths, eachDayOfInterval, endOfMonth, format, startOfMonth, startOfYear } from "date-fns";
 import { cs } from "date-fns/locale";
 import {
   periodAnchorStart,
@@ -99,18 +99,18 @@ export function buildRevenueChartFromReservations(
 
   if (period === "month") {
     const start = startOfMonth(periodAnchorStart(period, anchor));
-    return Array.from({ length: 12 }, (_, i) => {
-      const m = subMonths(start, 11 - i);
-      const key = format(m, "yyyy-MM");
-      const monthRows = reservations.filter((r) => r.booking_date.startsWith(key));
-      const earned = monthRows
+    const days = eachDayOfInterval({ start, end: endOfMonth(start) });
+    return days.map((d) => {
+      const key = format(d, "yyyy-MM-dd");
+      const dayRows = reservations.filter((r) => r.booking_date === key);
+      const earned = dayRows
         .filter((r) => isEarned(r, now))
         .reduce((s, r) => s + priceOf(r), 0);
-      const planned = monthRows
+      const planned = dayRows
         .filter((r) => isPlanned(r, now))
         .reduce((s, r) => s + priceOf(r), 0);
       return {
-        label: format(m, "LLL yy", { locale: cs }),
+        label: format(d, "d.", { locale: cs }),
         earned,
         planned,
       };

@@ -253,13 +253,14 @@ export default function AdminStatisticsPage() {
 
   const revenueChartData = useMemo(() => {
     if (statsPeriod === "week") return [];
-    const fromDb = buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
     const fromRez = buildRevenueChartFromReservations(
       reservations,
       statsPeriod,
       periodAnchor,
       priceOf,
     );
+    if (statsPeriod === "month") return fromRez;
+    const fromDb = buildRevenueChartSeries(vydelkyRows, statsPeriod, periodAnchor);
     return mergeRevenueChartSeries(fromDb, fromRez);
   }, [reservations, vydelkyRows, statsPeriod, periodAnchor, priceOf]);
 
@@ -276,7 +277,11 @@ export default function AdminStatisticsPage() {
         : "Výkonost měsíce";
 
   const revenueChartTitle =
-    statsPeriod === "year" ? "Tržby v roce" : "Tržby (12 měsíců)";
+    statsPeriod === "year"
+      ? "Tržby v roce"
+      : statsPeriod === "month"
+        ? "Tržby po dnech v měsíci"
+        : "Tržby";
 
   const weekChartConfig = {
     count: { label: "Rezervace", color: CHART_BAR_FILL },
@@ -586,11 +591,20 @@ export default function AdminStatisticsPage() {
               <BarChart
                 data={revenueChartData}
                 margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
-                barCategoryGap="18%"
+                barCategoryGap={statsPeriod === "month" ? "8%" : "18%"}
                 barGap={4}
               >
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  interval={statsPeriod === "month" ? 1 : 0}
+                  angle={statsPeriod === "month" ? -45 : 0}
+                  textAnchor={statsPeriod === "month" ? "end" : "middle"}
+                  height={statsPeriod === "month" ? 48 : 30}
+                />
                 <YAxis
                   tickLine={false}
                   axisLine={false}

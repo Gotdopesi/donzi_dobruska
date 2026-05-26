@@ -9,6 +9,7 @@ export const SHOWCASE_TABLES = {
   vydelky: "showcase_vydelky",
   vydelkySluzby: "showcase_vydelky_sluzby",
   portfolioPoptavky: "portfolio_poptavky",
+  zakaznici: "showcase_zakaznici",
 } as const;
 
 export type ShowcaseTableName = (typeof SHOWCASE_TABLES)[keyof typeof SHOWCASE_TABLES];

@@ -1,14 +1,10 @@
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { DEFAULT_BARBERSHOP_ID } from "@/lib/barbershop";
+import {
+  BOOKING_SLOT_STEP_MINUTES,
+  getOpeningHoursForDay,
+} from "@/lib/opening-hours";
 import { REZERVACE_TABLE } from "@/lib/rezervace";
-
-/** Po–Pá 9:00–19:00, So 9:00–14:00 — sloty po 30 min, pauza 12:00–13:30. */
-const WEEKDAY_OPEN = 9 * 60;
-const WEEKDAY_CLOSE = 19 * 60;
-const SATURDAY_CLOSE = 14 * 60;
-const LUNCH_START = 12 * 60;
-const LUNCH_END = 13 * 60 + 30;
-const SLOT_STEP = 30;
 
 export type BookedInterval = {
   startMinutes: number;
@@ -32,23 +28,18 @@ export function minutesToTime(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** Všechny startovní časy pro daný den (Date.getDay(): 0=neděle, 6=sobota). */
+/** Startovní časy podle otevírací doby salónu (Donzi). */
 export function getBookingTimesForDay(day: Date): string[] {
-  const dow = day.getDay();
-  if (dow === 0) return [];
+  const hours = getOpeningHoursForDay(day);
+  if (!hours) return [];
 
-  const close = dow === 6 ? SATURDAY_CLOSE : WEEKDAY_CLOSE;
   const times: string[] = [];
-
-  for (let m = WEEKDAY_OPEN; m < close; m += SLOT_STEP) {
-    if (m >= LUNCH_START && m < LUNCH_END) continue;
+  for (let m = hours.open; m < hours.close; m += BOOKING_SLOT_STEP_MINUTES) {
     times.push(minutesToTime(m));
   }
-
   return times;
 }
 
-/** @deprecated použij getBookingTimesForDay */
 export const ALL_BOOKING_TIMES = getBookingTimesForDay(new Date(2026, 0, 5));
 
 function intervalsOverlap(aStart: number, aDur: number, bStart: number, bDur: number): boolean {
@@ -56,24 +47,7 @@ function intervalsOverlap(aStart: number, aDur: number, bStart: number, bDur: nu
 }
 
 function fitsInDay(startMinutes: number, durationMinutes: number, closeMinutes: number): boolean {
-  let remaining = durationMinutes;
-  let cursor = startMinutes;
-
-  while (remaining > 0) {
-    if (cursor >= LUNCH_START && cursor < LUNCH_END) {
-      cursor = LUNCH_END;
-      continue;
-    }
-    if (cursor >= closeMinutes) return false;
-    const untilLunch = cursor < LUNCH_START ? LUNCH_START - cursor : Infinity;
-    const untilClose = closeMinutes - cursor;
-    const chunk = Math.min(remaining, untilLunch, untilClose);
-    if (chunk <= 0) return false;
-    remaining -= chunk;
-    cursor += chunk;
-  }
-
-  return true;
+  return startMinutes + durationMinutes <= closeMinutes;
 }
 
 /** Volné startovní časy — respektuje délku služby a existující rezervace. */
@@ -83,14 +57,16 @@ export function filterAvailableStartTimes(
   booked: BookedInterval[],
   now = new Date(),
 ): string[] {
-  const close = day.getDay() === 6 ? SATURDAY_CLOSE : WEEKDAY_CLOSE;
+  const hours = getOpeningHoursForDay(day);
+  if (!hours) return [];
+
   const candidates = getBookingTimesForDay(day);
 
   return candidates.filter((slot) => {
     const start = timeToMinutes(slot);
 
     if (isSameDayPastSlot(day, slot, now)) return false;
-    if (!fitsInDay(start, durationMinutes, close)) return false;
+    if (!fitsInDay(start, durationMinutes, hours.close)) return false;
 
     for (const b of booked) {
       if (intervalsOverlap(start, durationMinutes, b.startMinutes, b.durationMinutes)) {
@@ -113,7 +89,6 @@ function isSameDayPastSlot(day: Date, slot: string, now: Date): boolean {
   return slotDate.getTime() < now.getTime();
 }
 
-/** Načte obsazené intervaly včetně délky služby z DB. */
 export async function fetchBookedIntervalsForDate(
   bookingDate: string,
   barbershopId = DEFAULT_BARBERSHOP_ID,
@@ -141,8 +116,25 @@ export async function fetchBookedIntervalsForDate(
   });
 }
 
-/** @deprecated */
 export async function fetchBookedTimesForDate(bookingDate: string): Promise<string[]> {
   const intervals = await fetchBookedIntervalsForDate(bookingDate);
   return intervals.map((i) => minutesToTime(i.startMinutes));
+}
+
+/** Časové řádky pro týdenní mřížku (union otevírací doby v týdnu). */
+export function getTimeSlotsForWeek(weekDays: Date[]): string[] {
+  let minOpen = 24 * 60;
+  let maxClose = 0;
+  for (const d of weekDays) {
+    const h = getOpeningHoursForDay(d);
+    if (!h) continue;
+    minOpen = Math.min(minOpen, h.open);
+    maxClose = Math.max(maxClose, h.close);
+  }
+  if (maxClose <= minOpen) return [];
+  const slots: string[] = [];
+  for (let m = minOpen; m < maxClose; m += BOOKING_SLOT_STEP_MINUTES) {
+    slots.push(minutesToTime(m));
+  }
+  return slots;
 }

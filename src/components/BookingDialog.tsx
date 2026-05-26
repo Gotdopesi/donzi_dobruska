@@ -216,6 +216,7 @@ export function BookingDialog({ trigger, open: controlledOpen, onOpenChange, pre
             status: "confirmed",
             barbershop_id: DEFAULT_BARBERSHOP_ID,
             sms_sent: false,
+            note: parsed.data.note?.trim() || null,
           })
           .select("id")
           .single(),

@@ -1,11 +1,11 @@
 import { AppLink, useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
-import { CalendarDays, Scissors, TrendingUp } from "lucide-react";
+import { BarChart3, CalendarDays, Users } from "lucide-react";
 
 const LINKS = [
   { to: "/admin", label: "Kalendář", icon: CalendarDays, exact: true },
-  { to: "/admin/sluzby", label: "Služby", icon: Scissors, exact: false },
-  { to: "/admin/trzby", label: "Tržby", icon: TrendingUp, exact: false },
+  { to: "/admin/zakaznici", label: "Zákazníci", icon: Users, exact: false },
+  { to: "/admin/statistiky", label: "Statistiky", icon: BarChart3, exact: false },
 ] as const;
 
 export function AdminNav() {

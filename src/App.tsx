@@ -3,8 +3,8 @@ import CancelReservationPage from "@/pages/CancelReservationPage";
 import AdminLoginPage from "@/pages/admin/AdminLoginPage";
 import { AdminLayout } from "@/pages/admin/AdminLayout";
 import AdminReservationsPage from "@/pages/admin/AdminReservationsPage";
-import AdminRevenuePage from "@/pages/admin/AdminRevenuePage";
-import AdminServicesPage from "@/pages/admin/AdminServicesPage";
+import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
+import AdminStatisticsPage from "@/pages/admin/AdminStatisticsPage";
 import { useRouter } from "@/lib/router";
 
 export default function App() {
@@ -18,18 +18,18 @@ export default function App() {
     return <AdminLoginPage />;
   }
 
-  if (pathname === "/admin/trzby") {
+  if (pathname === "/admin/zakaznici") {
     return (
       <AdminLayout>
-        <AdminRevenuePage />
+        <AdminCustomersPage />
       </AdminLayout>
     );
   }
 
-  if (pathname === "/admin/sluzby") {
+  if (pathname === "/admin/statistiky" || pathname === "/admin/trzby" || pathname === "/admin/sluzby") {
     return (
       <AdminLayout>
-        <AdminServicesPage />
+        <AdminStatisticsPage />
       </AdminLayout>
     );
   }

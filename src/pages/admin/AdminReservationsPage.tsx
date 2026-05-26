@@ -8,6 +8,7 @@ import { isReadOnlyAdminSession } from "@/lib/admin-readonly";
 import { useAdminSession } from "@/lib/use-admin-session";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminMonthCalendar } from "@/components/admin/AdminMonthCalendar";
+import { AdminWeekCalendar } from "@/components/admin/AdminWeekCalendar";
 import { AdminAddReservationDialog } from "@/components/admin/AdminAddReservationDialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ export default function AdminReservationsPage() {
   const [rows, setRows] = useState<Reservation[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
 
   const { barbershopId } = useAdminBarbershop();
   const readOnly = isReadOnlyAdminSession(userEmail);
@@ -119,13 +121,36 @@ export default function AdminReservationsPage() {
 
       <AdminNav />
 
+      <div className="flex gap-2 mb-4">
+        <Button
+          type="button"
+          variant={calendarView === "month" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setCalendarView("month")}
+        >
+          Měsíc
+        </Button>
+        <Button
+          type="button"
+          variant={calendarView === "week" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setCalendarView("week")}
+        >
+          Týden
+        </Button>
+      </div>
+
       <div className="rounded-xl border border-border bg-card/50 shadow-sm p-4 sm:p-6">
-        <AdminMonthCalendar
-          rows={rows}
-          loading={loadingList}
-          readOnly={readOnly}
-          onDelete={(id) => void deleteReservation(id)}
-        />
+        {calendarView === "month" ? (
+          <AdminMonthCalendar
+            rows={rows}
+            loading={loadingList}
+            readOnly={readOnly}
+            onDelete={(id) => void deleteReservation(id)}
+          />
+        ) : (
+          <AdminWeekCalendar rows={rows} loading={loadingList} />
+        )}
       </div>
 
       <AdminAddReservationDialog
